@@ -1,6 +1,6 @@
-import userService from '../services/userService';
+import userService from '../services/userService.js';
 
-let handleLoging = async (req, res) => {
+const handleLoging = async (req, res) => {
     let email = req.body.email;
     let password = req.body.password;
 
@@ -22,10 +22,38 @@ let handleLoging = async (req, res) => {
         message: userData.errMessage,
         user: userData.user ? userData.user : {}
     })
-}
+};
 
+// Get user profile (protected)
+const getUserProfile = async (req, res) => {
+    try {
+        if (!req.user) {
+            return res.status(401).json({ success: false, message: 'Unauthorized' });
+        }
+        // Optionally fetch fresh user data from DB via service if needed
+        return res.status(200).json({ success: true, user: req.user });
+    } catch (error) {
+        console.error('Get user profile error:', error);
+        return res.status(500).json({ success: false, message: 'Server error' });
+    }
+};
 
+// Update user profile (protected)
+const updateUserProfile = async (req, res) => {
+    try {
+        if (!req.user) {
+            return res.status(401).json({ success: false, message: 'Unauthorized' });
+        }
+        const updated = await userService.updateUserProfile(req.user.id, req.body);
+        return res.status(200).json({ success: true, user: updated });
+    } catch (error) {
+        console.error('Update user profile error:', error);
+        return res.status(500).json({ success: false, message: 'Server error' });
+    }
+};
 
-module.exports = {
-    handleLoging: handleLoging
-}
+export default {
+    handleLoging,
+    getUserProfile,
+    updateUserProfile,
+};

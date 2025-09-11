@@ -14,6 +14,10 @@ const UserSchema = new mongoose.Schema({
     type: String,
     required: true
   },
+  isVerified: {
+    type: Boolean,
+    default: false
+  },
   fullName: {
     type: String
   },
@@ -26,7 +30,7 @@ const UserSchema = new mongoose.Schema({
   role: {
     type: String,
     enum: ['customer', 'staff', 'technician', 'admin'],
-    default: 'user'
+    default: 'customer'
   },
   avatar: {
     type: String
