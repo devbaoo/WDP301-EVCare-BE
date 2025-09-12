@@ -1,8 +1,8 @@
 import { v2 as cloudinary } from "cloudinary";
 import fs from "fs";
+import path from "path";
+import os from "os";
 import dotenv from "dotenv";
-const path = await import("path");
-const os = await import("os");
 
 dotenv.config();
 
@@ -22,11 +22,31 @@ cloudinary.config({
 const uploadImage = async (file) => {
   try {
     console.log("Starting Cloudinary upload with file:", file.originalname);
+    console.log("File object:", {
+      originalname: file.originalname,
+      mimetype: file.mimetype,
+      size: file.size,
+      hasBuffer: !!file.buffer,
+      hasPath: !!file.path
+    });
+
+    let uploadSource;
+
+    if (file.buffer) {
+      // For multer memory storage, create a data URI from buffer
+      const base64 = file.buffer.toString('base64');
+      uploadSource = `data:${file.mimetype};base64,${base64}`;
+    } else if (file.path) {
+      // For disk storage, use file path
+      uploadSource = file.path;
+    } else {
+      throw new Error("No file data available for upload");
+    }
 
     // Upload file lên Cloudinary
     const result = await new Promise((resolve, reject) => {
       cloudinary.uploader.upload(
-        file.path,
+        uploadSource,
         {
           resource_type: "image",
           folder: "avatars",

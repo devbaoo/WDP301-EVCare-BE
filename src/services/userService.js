@@ -1,78 +1,175 @@
-import db from '../models/index';
-import bcrypt from 'bcryptjs';
+import User from "../models/user.js";
+import moment from "moment-timezone";
 
+// Lấy profile người dùng
+const getUserProfile = async (userId) => {
+    try {
+        const user = await User.findById(userId).select("-password");
 
-
-let handleUserLogin = (email, password) => {
-    return new Promise(async (resolve, reject) => {
-        try {
-            let userData = {};
-            let isExist = await checkUserEmail(email);
-            if (isExist) {
-                //user already exist
-                let user = await db.User.findOne({
-                    attributes: ['email', 'roleId', 'password'],
-                    where: { email: email },
-                    raw: true,
-
-                });
-                if (user) {
-                    //compare password: dùng cách 1 hay cách 2 đều chạy đúng cả =))
-                    // Cách 1: dùng asynchronous (bất đồng bộ)
-                    let check = await bcrypt.compare(password, user.password);
-
-
-                    // Cách 2: dùng synchronous  (đồng bộ)
-                    // let check = bcrypt.compareSync(password, user.password);
-
-                    if (check) {
-                        userData.errCode = 0;
-                        userData.errMessage = 'OK';
-
-                        delete user.password;
-                        userData.user = user;
-                    }
-                    else {
-                        userData.errCode = 3;
-                        userData.errMessage = 'Wrong password';
-                    }
-                } else {
-                    userData.errCode = 2;
-                    userData.errMessage = `User not found`;
-                }
-
-            } else {
-                //return error
-                userData.errCode = 1;
-                userData.errMessage = `Your's Email isn't exist in our system, plz try other email`
-            }
-            resolve(userData)
-        } catch (e) {
-            reject(e);
+        if (!user) {
+            return {
+                success: false,
+                statusCode: 404,
+                message: "Không tìm thấy người dùng",
+            };
         }
-    })
-}
 
-let checkUserEmail = (userEmail) => {
-    return new Promise(async (resolve, reject) => {
-        try {
-            let user = await db.User.findOne({
-                where: { email: userEmail }
-            })
-            if (user) {
-                resolve(true)
-            } else {
-                resolve(false)
-            }
+        return {
+            success: true,
+            statusCode: 200,
+            message: "Lấy profile thành công",
+            user: {
+                id: user._id,
+                username: user.username,
+                email: user.email,
+                fullName: user.fullName,
+                phone: user.phone,
+                address: user.address,
+                role: user.role,
+                avatar: user.avatar,
+                isVerified: user.isVerified,
+                createdAt: user.createdAt,
+                updatedAt: user.updatedAt,
+            },
+        };
+    } catch (error) {
+        console.error("Get user profile error:", error);
+        return {
+            success: false,
+            statusCode: 500,
+            message: "Lỗi khi lấy profile",
+        };
+    }
+};
 
-        } catch (e) {
-            reject(e)
+// Cập nhật profile người dùng
+const updateUserProfile = async (userId, updateData) => {
+    try {
+        const user = await User.findById(userId);
+        if (!user) {
+            return {
+                success: false,
+                statusCode: 404,
+                message: "Không tìm thấy người dùng",
+            };
         }
-    })
-}
+
+        // Update allowed fields
+        if (updateData.username) user.username = updateData.username;
+        if (updateData.fullName) user.fullName = updateData.fullName;
+        if (updateData.phone) user.phone = updateData.phone;
+        if (updateData.address) user.address = updateData.address;
+        if (updateData.avatar) user.avatar = updateData.avatar;
+
+        await user.save();
+
+        return {
+            success: true,
+            statusCode: 200,
+            message: "Cập nhật profile thành công",
+            user: {
+                id: user._id,
+                username: user.username,
+                email: user.email,
+                fullName: user.fullName,
+                phone: user.phone,
+                address: user.address,
+                role: user.role,
+                avatar: user.avatar,
+                isVerified: user.isVerified,
+            },
+        };
+    } catch (error) {
+        console.error("Update user profile error:", error);
+        return {
+            success: false,
+            statusCode: 500,
+            message: "Lỗi khi cập nhật profile",
+        };
+    }
+};
+// Xóa mềm user (admin)
+const softDeleteUser = async (userId) => {
+    try {
+        const user = await User.findById(userId);
+        if (!user) {
+            return {
+                success: false,
+                statusCode: 404,
+                message: "Không tìm thấy người dùng",
+            };
+        }
+
+        user.deleted = true;
+        await user.save();
+
+        return {
+            success: true,
+            statusCode: 200,
+            message: "Xóa người dùng thành công",
+        };
+    } catch (error) {
+        console.error("Soft delete user error:", error);
+        return {
+            success: false,
+            statusCode: 500,
+            message: "Lỗi khi xóa người dùng",
+        };
+    }
+};
 
 
 
-module.exports = {
-    handleUserLogin: handleUserLogin,
-}
+const updateUserRole = async (userId, newRole) => {
+    try {
+        const user = await User.findById(userId);
+        if (!user) {
+            return {
+                success: false,
+                statusCode: 404,
+                message: "Không tìm thấy người dùng",
+            };
+        }
+
+        // Validate role
+        const validRoles = ["customer", "staff", "technician", "admin"];
+        if (!validRoles.includes(newRole)) {
+            return {
+                success: false,
+                statusCode: 400,
+                message: "Role không hợp lệ",
+            };
+        }
+
+        user.role = newRole;
+        await user.save();
+
+        return {
+            success: true,
+            statusCode: 200,
+            message: "Cập nhật role thành công",
+            user: {
+                id: user._id,
+                username: user.username,
+                email: user.email,
+                fullName: user.fullName,
+                role: user.role,
+            },
+        };
+    } catch (error) {
+        console.error("Update user role error:", error);
+        return {
+            success: false,
+            statusCode: 500,
+            message: "Lỗi khi cập nhật role",
+        };
+    }
+};
+
+export default {
+    getUserProfile,
+    updateUserProfile,
+    softDeleteUser,
+    updateUserRole,
+
+};
