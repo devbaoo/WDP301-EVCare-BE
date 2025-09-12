@@ -1,59 +1,139 @@
-import userService from '../services/userService.js';
+import userService from "../services/userService.js";
+import cloudinaryService from "../services/cloudinaryService.js";
 
-const handleLoging = async (req, res) => {
-    let email = req.body.email;
-    let password = req.body.password;
+// Get user profile
+const getUserProfile = async (req, res) => {
+  try {
+    const result = await userService.getUserProfile(req.user.id);
+    return res.status(result.statusCode).json({
+      success: result.success,
+      message: result.message,
+      user: result.user,
+    });
+  } catch (error) {
+    console.error("Get profile error:", error);
+    res.status(500).json({
+      success: false,
+      message: "Server error",
+    });
+  }
+};
 
-    if (!email || !password) {
-        return res.status(500).json({
-            errCode: 1,
-            message: 'Missing inputs parameter!'
-        })
+// Update user profile
+const updateUserProfile = async (req, res) => {
+  try {
+    const result = await userService.updateUserProfile(req.user.id, req.body);
+    return res.status(result.statusCode).json({
+      success: result.success,
+      message: result.message,
+      user: result.user,
+    });
+  } catch (error) {
+    console.error("Update profile error:", error);
+    res.status(500).json({
+      success: false,
+      message: "Server error",
+    });
+  }
+};
+
+// Upload avatar - simplified version
+const uploadAvatar = async (req, res) => {
+  try {
+    if (!req.file) {
+      return res.status(400).json({
+        success: false,
+        message: "No image file provided. Please upload a file.",
+      });
     }
 
-    let userData = await userService.handleUserLogin(email, password)
-    //check email exist
-    //password nhap vao ko dung
-    //return userInfor
-    // access_token :JWT json web token
+    // Upload to Cloudinary using the service
+    const uploadResult = await cloudinaryService.uploadImage(req.file);
+
+    if (!uploadResult.success) {
+      return res.status(500).json({
+        success: false,
+        message: uploadResult.message,
+      });
+    }
+
+    // Update user profile with new avatar URL
+    const updateResult = await userService.updateUserProfile(req.user.id, {
+      avatar: uploadResult.imageUrl,
+    });
+
+    if (!updateResult.success) {
+      return res.status(500).json({
+        success: false,
+        message: updateResult.message,
+      });
+    }
 
     return res.status(200).json({
-        errCode: userData.errCode,
-        message: userData.errMessage,
-        user: userData.user ? userData.user : {}
-    })
+      success: true,
+      message: "Avatar uploaded successfully",
+      user: updateResult.user,
+      imageDetails: {
+        imageUrl: uploadResult.imageUrl,
+        imageId: uploadResult.imageId,
+      },
+    });
+  } catch (error) {
+    console.error("Upload avatar error:", error);
+    res.status(500).json({
+      success: false,
+      message: "Server error",
+      error: error.message,
+    });
+  }
 };
 
-// Get user profile (protected)
-const getUserProfile = async (req, res) => {
-    try {
-        if (!req.user) {
-            return res.status(401).json({ success: false, message: 'Unauthorized' });
-        }
-        // Optionally fetch fresh user data from DB via service if needed
-        return res.status(200).json({ success: true, user: req.user });
-    } catch (error) {
-        console.error('Get user profile error:', error);
-        return res.status(500).json({ success: false, message: 'Server error' });
-    }
+
+
+// Delete user (admin only)
+const deleteUser = async (req, res) => {
+  try {
+    const result = await userService.softDeleteUser(req.params.id);
+    return res.status(result.statusCode).json({
+      success: result.success,
+      message: result.message,
+    });
+  } catch (error) {
+    console.error("Delete user error:", error);
+    res.status(500).json({
+      success: false,
+      message: "Server error",
+    });
+  }
 };
 
-// Update user profile (protected)
-const updateUserProfile = async (req, res) => {
-    try {
-        if (!req.user) {
-            return res.status(401).json({ success: false, message: 'Unauthorized' });
-        }
-        const updated = await userService.updateUserProfile(req.user.id, req.body);
-        return res.status(200).json({ success: true, user: updated });
-    } catch (error) {
-        console.error('Update user profile error:', error);
-        return res.status(500).json({ success: false, message: 'Server error' });
+const updateUserRole = async (req, res) => {
+  try {
+    const { userId } = req.params;
+    const { role } = req.body;
+
+    if (!userId || !role) {
+      return res.status(400).json({
+        success: false,
+        message: "UserId và role là bắt buộc",
+      });
     }
+
+    const result = await userService.updateUserRole(userId, role);
+    return res.status(result.statusCode).json(result);
+  } catch (error) {
+    console.error("Update user role error:", error);
+    return res.status(500).json({
+      success: false,
+      message: "Lỗi server",
+    });
+  }
 };
 
 export default {
-    handleLoging,
-    getUserProfile,
-    updateUserProfile,
+  getUserProfile,
+  updateUserProfile,
+  uploadAvatar,
+  deleteUser,
+  updateUserRole,
 };

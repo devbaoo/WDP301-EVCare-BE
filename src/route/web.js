@@ -1,7 +1,21 @@
 import express from "express";
+import multer from "multer";
 import userController from "../controllers/userController.js";
 import authController from "../controllers/authController.js";
 import { protect, authorize } from "../middleware/authMiddleware.js";
+
+// Configure multer for file uploads
+const upload = multer({
+    storage: multer.memoryStorage(),
+    limits: { fileSize: 10 * 1024 * 1024 }, // 10MB limit
+    fileFilter: (req, file, cb) => {
+        if (file.mimetype.startsWith('image/')) {
+            cb(null, true);
+        } else {
+            cb(new Error('Only image files are allowed'), false);
+        }
+    }
+});
 
 let router = express.Router();
 
@@ -27,12 +41,16 @@ let initWebRoutes = (app) => {
 
     // ===== USER ROUTES =====
 
-    // Legacy login route (keeping for backward compatibility)
-    router.post('/api/login', userController.handleLoging);
-
     // User profile routes (protected)
     router.get('/api/user/profile', protect, userController.getUserProfile);
     router.put('/api/user/profile', protect, userController.updateUserProfile);
+
+    // Avatar upload route (protected)
+    router.post('/api/user/upload-avatar', protect, upload.single('avatar'), userController.uploadAvatar);
+
+    // Admin user management routes (protected + admin only)
+    router.delete('/api/user/:id', protect, authorize('admin'), userController.deleteUser);
+    router.put('/api/user/:userId/role', protect, authorize('admin'), userController.updateUserRole);
 
     // ===== HEALTH CHECK =====
     router.get('/api/health', (req, res) => {
