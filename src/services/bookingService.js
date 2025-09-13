@@ -1,0 +1,539 @@
+import Vehicle from "../models/vehicle.js";
+import Appointment from "../models/appointment.js";
+import ServiceCenter from "../models/serviceCenter.js";
+import ServiceType from "../models/serviceType.js";
+import User from "../models/user.js";
+import emailService from "./emailService.js";
+
+// Lấy danh sách xe của customer
+const getCustomerVehicles = async (customerId) => {
+    try {
+        const vehicles = await Vehicle.find({
+            owner: customerId,
+            status: "active"
+        })
+            .populate("vehicleInfo.vehicleModel", "brand modelName batteryType batteryCapacity motorPower maintenanceIntervals")
+            .sort({ createdAt: -1 });
+
+        return {
+            success: true,
+            statusCode: 200,
+            message: "Lấy danh sách xe thành công",
+            data: vehicles,
+        };
+    } catch (error) {
+        console.error("Get customer vehicles error:", error);
+        return {
+            success: false,
+            statusCode: 500,
+            message: "Lỗi khi lấy danh sách xe",
+        };
+    }
+};
+
+// Thêm xe mới cho customer
+const addCustomerVehicle = async (customerId, vehicleData) => {
+    try {
+        // Validate required fields
+        const requiredFields = ["vehicleInfo"];
+        for (const field of requiredFields) {
+            if (!vehicleData[field]) {
+                return {
+                    success: false,
+                    statusCode: 400,
+                    message: `Thiếu trường bắt buộc: ${field}`,
+                };
+            }
+        }
+
+        // Validate vehicleInfo has vehicleModel
+        if (!vehicleData.vehicleInfo.vehicleModel) {
+            return {
+                success: false,
+                statusCode: 400,
+                message: "Thiếu thông tin model xe (vehicleModel)",
+            };
+        }
+
+        // Check if license plate already exists
+        const existingVehicle = await Vehicle.findOne({
+            "vehicleInfo.licensePlate": vehicleData.vehicleInfo.licensePlate,
+        });
+
+        if (existingVehicle) {
+            return {
+                success: false,
+                statusCode: 400,
+                message: "Biển số xe đã tồn tại trong hệ thống",
+            };
+        }
+
+        vehicleData.owner = customerId;
+        const vehicle = new Vehicle(vehicleData);
+        await vehicle.save();
+
+        return {
+            success: true,
+            statusCode: 201,
+            message: "Thêm xe thành công",
+            data: vehicle,
+        };
+    } catch (error) {
+        console.error("Add customer vehicle error:", error);
+        return {
+            success: false,
+            statusCode: 500,
+            message: "Lỗi khi thêm xe",
+        };
+    }
+};
+
+// Lấy danh sách trung tâm dịch vụ có sẵn
+const getAvailableServiceCenters = async (filters = {}) => {
+    try {
+        const {
+            city,
+            district,
+            serviceTypeId,
+            lat,
+            lng,
+            radius = 10,
+        } = filters;
+
+        let query = { status: "active" };
+
+        if (city) query["address.city"] = new RegExp(city, "i");
+        if (district) query["address.district"] = new RegExp(district, "i");
+        if (serviceTypeId) query.services = serviceTypeId;
+
+        // If coordinates provided, add location filter
+        if (lat && lng) {
+            query["address.coordinates.lat"] = {
+                $gte: lat - radius / 111,
+                $lte: lat + radius / 111,
+            };
+            query["address.coordinates.lng"] = {
+                $gte: lng - radius / 111,
+                $lte: lng + radius / 111,
+            };
+        }
+
+        const serviceCenters = await ServiceCenter.find(query)
+            .populate("services", "name category pricing.basePrice")
+            .populate("staff.user", "username fullName email avatar")
+            .sort({ "rating.average": -1 });
+
+        return {
+            success: true,
+            statusCode: 200,
+            message: "Lấy danh sách trung tâm dịch vụ thành công",
+            data: serviceCenters,
+        };
+    } catch (error) {
+        console.error("Get available service centers error:", error);
+        return {
+            success: false,
+            statusCode: 500,
+            message: "Lỗi khi lấy danh sách trung tâm dịch vụ",
+        };
+    }
+};
+
+// Lấy danh sách loại dịch vụ tương thích với xe
+const getCompatibleServices = async (vehicleId, serviceCenterId = null) => {
+    try {
+        const vehicle = await Vehicle.findById(vehicleId)
+            .populate("vehicleInfo.vehicleModel", "brand modelName batteryType batteryCapacity motorPower");
+
+        if (!vehicle) {
+            return {
+                success: false,
+                statusCode: 404,
+                message: "Không tìm thấy xe",
+            };
+        }
+
+        let query = {
+            status: "active",
+            $or: [
+                { "compatibleVehicles.brand": vehicle.vehicleInfo.vehicleModel.brand },
+                { "compatibleVehicles.model": vehicle.vehicleInfo.vehicleModel.modelName },
+                { "compatibleVehicles.year": vehicle.vehicleInfo.year },
+                { "compatibleVehicles.batteryType": vehicle.vehicleInfo.vehicleModel.batteryType },
+            ],
+        };
+
+        // If service center specified, filter by services offered
+        if (serviceCenterId) {
+            const serviceCenter = await ServiceCenter.findById(serviceCenterId);
+            if (serviceCenter && serviceCenter.services.length > 0) {
+                query._id = { $in: serviceCenter.services };
+            }
+        }
+
+        const serviceTypes = await ServiceType.find(query)
+            .sort({ "rating.average": -1, "aiData.successRate": -1 });
+
+        return {
+            success: true,
+            statusCode: 200,
+            message: "Lấy danh sách dịch vụ tương thích thành công",
+            data: serviceTypes,
+        };
+    } catch (error) {
+        console.error("Get compatible services error:", error);
+        return {
+            success: false,
+            statusCode: 500,
+            message: "Lỗi khi lấy danh sách dịch vụ tương thích",
+        };
+    }
+};
+
+// Lấy lịch trống của trung tâm và kỹ thuật viên
+const getAvailableSlots = async (serviceCenterId, serviceTypeId, date) => {
+    try {
+        const serviceCenter = await ServiceCenter.findById(serviceCenterId);
+        const serviceType = await ServiceType.findById(serviceTypeId);
+
+        if (!serviceCenter) {
+            return {
+                success: false,
+                statusCode: 404,
+                message: "Không tìm thấy trung tâm dịch vụ",
+            };
+        }
+
+        if (!serviceType) {
+            return {
+                success: false,
+                statusCode: 404,
+                message: "Không tìm thấy loại dịch vụ",
+            };
+        }
+
+        // Get technicians for this service center
+        const technicians = serviceCenter.staff.filter(
+            staff => staff.role === "technician" && staff.isActive
+        );
+
+        if (technicians.length === 0) {
+            return {
+                success: false,
+                statusCode: 400,
+                message: "Trung tâm không có kỹ thuật viên khả dụng",
+            };
+        }
+
+        // Get existing appointments for the date
+        const startOfDay = new Date(date);
+        startOfDay.setHours(0, 0, 0, 0);
+        const endOfDay = new Date(date);
+        endOfDay.setHours(23, 59, 59, 999);
+
+        const existingAppointments = await Appointment.find({
+            serviceCenter: serviceCenterId,
+            "appointmentTime.date": {
+                $gte: startOfDay,
+                $lte: endOfDay,
+            },
+            status: { $in: ["confirmed", "in_progress"] },
+        });
+
+        // Generate available time slots
+        const availableSlots = [];
+        const serviceDuration = serviceType.serviceDetails.duration; // minutes
+        const workingHours = serviceCenter.operatingHours;
+
+        // Get day of week
+        const dayOfWeek = new Date(date).toLocaleLowerCase().substring(0, 3);
+        const todaySchedule = workingHours[dayOfWeek];
+
+        if (!todaySchedule || !todaySchedule.isOpen) {
+            return {
+                success: false,
+                statusCode: 400,
+                message: "Trung tâm không hoạt động vào ngày này",
+            };
+        }
+
+        // Generate time slots
+        const startTime = todaySchedule.open;
+        const endTime = todaySchedule.close;
+        const [startHour, startMin] = startTime.split(":").map(Number);
+        const [endHour, endMin] = endTime.split(":").map(Number);
+
+        const startMinutes = startHour * 60 + startMin;
+        const endMinutes = endHour * 60 + endMin;
+
+        for (let time = startMinutes; time + serviceDuration <= endMinutes; time += 30) {
+            const slotStart = new Date(date);
+            slotStart.setHours(Math.floor(time / 60), time % 60, 0, 0);
+
+            const slotEnd = new Date(slotStart);
+            slotEnd.setMinutes(slotEnd.getMinutes() + serviceDuration);
+
+            const timeString = `${Math.floor(time / 60).toString().padStart(2, '0')}:${(time % 60).toString().padStart(2, '0')}`;
+            const endTimeString = `${Math.floor((time + serviceDuration) / 60).toString().padStart(2, '0')}:${((time + serviceDuration) % 60).toString().padStart(2, '0')}`;
+
+            // Check if slot conflicts with existing appointments
+            const hasConflict = existingAppointments.some(appointment => {
+                const apptStart = new Date(appointment.appointmentTime.date);
+                const [apptHour, apptMin] = appointment.appointmentTime.startTime.split(":").map(Number);
+                apptStart.setHours(apptHour, apptMin, 0, 0);
+
+                const apptEnd = new Date(apptStart);
+                apptEnd.setMinutes(apptEnd.getMinutes() + appointment.appointmentTime.duration);
+
+                return (slotStart < apptEnd && slotEnd > apptStart);
+            });
+
+            if (!hasConflict) {
+                availableSlots.push({
+                    startTime: timeString,
+                    endTime: endTimeString,
+                    duration: serviceDuration,
+                    availableTechnicians: technicians.map(t => t.user),
+                });
+            }
+        }
+
+        return {
+            success: true,
+            statusCode: 200,
+            message: "Lấy lịch trống thành công",
+            data: {
+                date,
+                serviceCenter: serviceCenter.name,
+                serviceType: serviceType.name,
+                availableSlots,
+                totalSlots: availableSlots.length,
+            },
+        };
+    } catch (error) {
+        console.error("Get available slots error:", error);
+        return {
+            success: false,
+            statusCode: 500,
+            message: "Lỗi khi lấy lịch trống",
+        };
+    }
+};
+
+// Tạo booking mới
+const createBooking = async (bookingData) => {
+    try {
+        const {
+            customerId,
+            vehicleId,
+            serviceCenterId,
+            serviceTypeId,
+            appointmentDate,
+            appointmentTime,
+            serviceDescription,
+            priority = "medium",
+        } = bookingData;
+
+        // Validate required fields
+        const requiredFields = ["customerId", "vehicleId", "serviceCenterId", "serviceTypeId", "appointmentDate", "appointmentTime"];
+        for (const field of requiredFields) {
+            if (!bookingData[field]) {
+                return {
+                    success: false,
+                    statusCode: 400,
+                    message: `Thiếu trường bắt buộc: ${field}`,
+                };
+            }
+        }
+
+        // Verify vehicle belongs to customer
+        const vehicle = await Vehicle.findOne({
+            _id: vehicleId,
+            owner: customerId,
+        }).populate("vehicleInfo.vehicleModel", "brand modelName");
+
+        if (!vehicle) {
+            return {
+                success: false,
+                statusCode: 400,
+                message: "Xe không thuộc về khách hàng này",
+            };
+        }
+
+        // Get service type details
+        const serviceType = await ServiceType.findById(serviceTypeId);
+        if (!serviceType) {
+            return {
+                success: false,
+                statusCode: 404,
+                message: "Không tìm thấy loại dịch vụ",
+            };
+        }
+
+        // Calculate end time
+        const duration = serviceType.serviceDetails.duration;
+        const [startHour, startMin] = appointmentTime.split(":").map(Number);
+        const endMinutes = startHour * 60 + startMin + duration;
+        const endHour = Math.floor(endMinutes / 60);
+        const endMin = endMinutes % 60;
+        const endTime = `${endHour.toString().padStart(2, '0')}:${endMin.toString().padStart(2, '0')}`;
+
+        // Create appointment
+        const appointment = new Appointment({
+            customer: customerId,
+            vehicle: vehicleId,
+            serviceCenter: serviceCenterId,
+            serviceType: serviceTypeId,
+            appointmentTime: {
+                date: new Date(appointmentDate),
+                startTime: appointmentTime,
+                endTime: endTime,
+                duration: duration,
+            },
+            serviceDetails: {
+                description: serviceDescription,
+                priority: priority,
+                estimatedCost: serviceType.pricing.basePrice,
+            },
+            status: "pending_confirmation",
+        });
+
+        await appointment.save();
+
+        // Populate appointment data for response
+        await appointment.populate([
+            { path: "customer", select: "username fullName email phone" },
+            { path: "vehicle", select: "vehicleInfo technicalSpecs" },
+            { path: "serviceCenter", select: "name address contact" },
+            { path: "serviceType", select: "name category pricing" },
+        ]);
+
+        // Send confirmation email
+        try {
+            await emailService.sendBookingConfirmation(appointment);
+        } catch (emailError) {
+            console.error("Send booking confirmation email error:", emailError);
+            // Don't fail the booking if email fails
+        }
+
+        return {
+            success: true,
+            statusCode: 201,
+            message: "Tạo booking thành công. Vui lòng chờ xác nhận từ trung tâm.",
+            data: appointment,
+        };
+    } catch (error) {
+        console.error("Create booking error:", error);
+        return {
+            success: false,
+            statusCode: 500,
+            message: "Lỗi khi tạo booking",
+        };
+    }
+};
+
+// Lấy danh sách booking của customer
+const getCustomerBookings = async (customerId, filters = {}) => {
+    try {
+        const {
+            status,
+            page = 1,
+            limit = 10,
+            sortBy = "createdAt",
+            sortOrder = "desc",
+        } = filters;
+
+        let query = { customer: customerId };
+        if (status) query.status = status;
+
+        const sort = {};
+        sort[sortBy] = sortOrder === "desc" ? -1 : 1;
+
+        const appointments = await Appointment.find(query)
+            .populate([
+                { path: "vehicle", select: "vehicleInfo" },
+                { path: "serviceCenter", select: "name address contact" },
+                { path: "serviceType", select: "name category pricing" },
+                { path: "technician", select: "username fullName" },
+            ])
+            .sort(sort)
+            .limit(limit * 1)
+            .skip((page - 1) * limit);
+
+        const total = await Appointment.countDocuments(query);
+
+        return {
+            success: true,
+            statusCode: 200,
+            message: "Lấy danh sách booking thành công",
+            data: {
+                appointments,
+                pagination: {
+                    currentPage: page,
+                    totalPages: Math.ceil(total / limit),
+                    totalItems: total,
+                    itemsPerPage: limit,
+                },
+            },
+        };
+    } catch (error) {
+        console.error("Get customer bookings error:", error);
+        return {
+            success: false,
+            statusCode: 500,
+            message: "Lỗi khi lấy danh sách booking",
+        };
+    }
+};
+
+// Hủy booking
+const cancelBooking = async (bookingId, customerId, reason) => {
+    try {
+        const appointment = await Appointment.findOne({
+            _id: bookingId,
+            customer: customerId,
+        });
+
+        if (!appointment) {
+            return {
+                success: false,
+                statusCode: 404,
+                message: "Không tìm thấy booking",
+            };
+        }
+
+        if (appointment.status === "completed") {
+            return {
+                success: false,
+                statusCode: 400,
+                message: "Không thể hủy booking đã hoàn thành",
+            };
+        }
+
+        await appointment.cancel(customerId, reason);
+
+        return {
+            success: true,
+            statusCode: 200,
+            message: "Hủy booking thành công",
+        };
+    } catch (error) {
+        console.error("Cancel booking error:", error);
+        return {
+            success: false,
+            statusCode: 500,
+            message: "Lỗi khi hủy booking",
+        };
+    }
+};
+
+export default {
+    getCustomerVehicles,
+    addCustomerVehicle,
+    getAvailableServiceCenters,
+    getCompatibleServices,
+    getAvailableSlots,
+    createBooking,
+    getCustomerBookings,
+    cancelBooking,
+};
