@@ -373,9 +373,10 @@ const handleWebhook = async (webhookData) => {
                     "payment.cancelledAt": new Date(),
                     "status": "cancelled",
                     "cancellation": {
+                        isCancelled: true,
                         reason: "Payment cancelled on PayOS",
                         cancelledAt: new Date(),
-                        cancelledBy: "system"
+                        cancelledBy: payment.customer
                     }
                 });
                 break;
@@ -464,6 +465,7 @@ const cancelBookingPayment = async (orderCode, customerId) => {
                 "payment.cancelledAt": new Date(),
                 "status": "cancelled",
                 "cancellation": {
+                    isCancelled: true,
                     reason: "Payment cancelled by customer",
                     cancelledAt: new Date(),
                     cancelledBy: customerId

@@ -239,9 +239,10 @@ const handlePaymentCancel = async (req, res) => {
                     "payment.cancelledAt": new Date(),
                     "status": "cancelled",
                     "cancellation": {
+                        isCancelled: true,
                         reason: "Payment cancelled by customer",
                         cancelledAt: new Date(),
-                        cancelledBy: "customer"
+                        cancelledBy: payment.customer
                     }
                 });
 
