@@ -235,9 +235,124 @@ const resetPassword = async (token, newPassword) => {
   }
 };
 
+// Gửi email xác nhận booking
+const sendBookingConfirmation = async (appointment) => {
+  try {
+    const customer = appointment.customer;
+    const vehicle = appointment.vehicle;
+    const serviceCenter = appointment.serviceCenter;
+    const serviceType = appointment.serviceType;
+
+    const appointmentDate = new Date(appointment.appointmentTime.date).toLocaleDateString('vi-VN');
+    const appointmentTime = appointment.appointmentTime.startTime;
+
+    // Tạo nội dung email
+    const emailContent = `
+      <div style="font-family: Arial, sans-serif; max-width: 600px; margin: 0 auto;">
+        <div style="background: linear-gradient(135deg, #667eea 0%, #764ba2 100%); padding: 30px; text-align: center; color: white;">
+          <h1 style="margin: 0; font-size: 28px;">EVCare</h1>
+          <p style="margin: 10px 0 0 0; font-size: 16px;">Xác nhận đặt lịch bảo dưỡng</p>
+        </div>
+        
+        <div style="padding: 30px; background: #f8f9fa;">
+          <h2 style="color: #333; margin-bottom: 20px;">Xin chào ${customer.fullName || customer.username}!</h2>
+          
+          <p style="color: #666; line-height: 1.6; margin-bottom: 20px;">
+            Cảm ơn bạn đã đặt lịch bảo dưỡng tại EVCare. Chúng tôi đã nhận được yêu cầu của bạn và đang xử lý.
+          </p>
+          
+          <div style="background: white; padding: 20px; border-radius: 8px; margin: 20px 0; box-shadow: 0 2px 4px rgba(0,0,0,0.1);">
+            <h3 style="color: #333; margin-bottom: 15px;">Thông tin đặt lịch</h3>
+            <table style="width: 100%; border-collapse: collapse;">
+              <tr>
+                <td style="padding: 8px 0; color: #666; width: 120px;">Xe:</td>
+                <td style="padding: 8px 0; color: #333; font-weight: 500;">${vehicle.vehicleInfo.vehicleModel.brand} ${vehicle.vehicleInfo.vehicleModel.modelName} ${vehicle.vehicleInfo.year}</td>
+              </tr>
+              <tr>
+                <td style="padding: 8px 0; color: #666;">Biển số:</td>
+                <td style="padding: 8px 0; color: #333; font-weight: 500;">${vehicle.vehicleInfo.licensePlate}</td>
+              </tr>
+              <tr>
+                <td style="padding: 8px 0; color: #666;">Dịch vụ:</td>
+                <td style="padding: 8px 0; color: #333; font-weight: 500;">${serviceType.name}</td>
+              </tr>
+              <tr>
+                <td style="padding: 8px 0; color: #666;">Trung tâm:</td>
+                <td style="padding: 8px 0; color: #333; font-weight: 500;">${serviceCenter.name}</td>
+              </tr>
+              <tr>
+                <td style="padding: 8px 0; color: #666;">Ngày:</td>
+                <td style="padding: 8px 0; color: #333; font-weight: 500;">${appointmentDate}</td>
+              </tr>
+              <tr>
+                <td style="padding: 8px 0; color: #666;">Giờ:</td>
+                <td style="padding: 8px 0; color: #333; font-weight: 500;">${appointmentTime}</td>
+              </tr>
+              <tr>
+                <td style="padding: 8px 0; color: #666;">Trạng thái:</td>
+                <td style="padding: 8px 0; color: #ff9800; font-weight: 500;">Chờ xác nhận</td>
+              </tr>
+            </table>
+          </div>
+          
+          <div style="background: #e3f2fd; padding: 15px; border-radius: 8px; margin: 20px 0;">
+            <p style="margin: 0; color: #1976d2; font-weight: 500;">
+              📞 Liên hệ: ${serviceCenter.contact.phone} | ${serviceCenter.contact.email}
+            </p>
+            <p style="margin: 5px 0 0 0; color: #1976d2;">
+              📍 Địa chỉ: ${serviceCenter.address.street}, ${serviceCenter.address.ward}, ${serviceCenter.address.district}, ${serviceCenter.address.city}
+            </p>
+          </div>
+          
+          <p style="color: #666; line-height: 1.6; margin-bottom: 20px;">
+            Trung tâm sẽ liên hệ với bạn trong vòng 24 giờ để xác nhận lịch hẹn. 
+            Vui lòng giữ điện thoại để nhận cuộc gọi xác nhận.
+          </p>
+          
+          <div style="text-align: center; margin: 30px 0;">
+            <a href="${process.env.FRONTEND_URL || 'https://evcare.com'}/my-bookings" 
+               style="background: #667eea; color: white; padding: 12px 30px; text-decoration: none; border-radius: 6px; font-weight: 500; display: inline-block;">
+              Xem lịch hẹn của tôi
+            </a>
+          </div>
+        </div>
+        
+        <div style="background: #f1f3f4; padding: 20px; text-align: center; color: #666; font-size: 14px;">
+          <p style="margin: 0;">© 2024 EVCare. Tất cả quyền được bảo lưu.</p>
+          <p style="margin: 5px 0 0 0;">Hệ thống quản lý bảo dưỡng xe điện thông minh</p>
+        </div>
+      </div>
+    `;
+
+    // Thông tin người nhận
+    const mailOptions = {
+      from: `"EVCare" <${process.env.EMAIL_USER}>`,
+      to: customer.email,
+      subject: `Xác nhận đặt lịch bảo dưỡng - ${appointmentDate} ${appointmentTime}`,
+      html: emailContent,
+    };
+
+    // Gửi email
+    await sendEmail(mailOptions);
+
+    return {
+      success: true,
+      message: "Email xác nhận booking đã được gửi",
+    };
+  } catch (error) {
+    console.error("Send booking confirmation email error:", error);
+    return {
+      success: false,
+      message: "Không thể gửi email xác nhận booking",
+      error: error.message,
+    };
+  }
+};
+
 export default {
   sendVerificationEmail,
   verifyEmail,
   sendResetPasswordEmail,
   resetPassword,
+  sendBookingConfirmation,
 };
