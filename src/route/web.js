@@ -6,6 +6,7 @@ import serviceCenterController from "../controllers/serviceCenterController.js";
 import serviceTypeController from "../controllers/serviceTypeController.js";
 import bookingController from "../controllers/bookingController.js";
 import vehicleModelController from "../controllers/vehicleModelController.js";
+import paymentController from "../controllers/paymentController.js";
 import { protect, authorize } from "../middleware/authMiddleware.js";
 
 // Configure multer for file uploads
@@ -123,6 +124,23 @@ let initWebRoutes = (app) => {
     router.get('/api/booking/:bookingId', protect, bookingController.getBookingDetails);
     router.put('/api/booking/:bookingId/cancel', protect, bookingController.cancelBooking);
 
+    // ===== PAYMENT ROUTES =====
+
+    // Payment management (protected - customer only)
+    router.post('/api/payment/booking/:appointmentId', protect, paymentController.createBookingPayment);
+    router.get('/api/payment/:paymentId/status', protect, paymentController.getPaymentStatus);
+    router.put('/api/payment/:orderCode/cancel', protect, paymentController.cancelBookingPayment);
+    router.get('/api/payment/my-payments', protect, paymentController.getCustomerPayments);
+
+    // PayOS webhook (public - no auth required)
+    router.post('/api/payment/webhook', paymentController.handleWebhook);
+
+    // PayOS redirect pages (public - no auth required)
+    router.get('/payment/success', paymentController.handlePaymentSuccess);
+    router.get('/payment/cancel', paymentController.handlePaymentCancel);
+
+    // Manual sync payment status from PayOS
+    router.post('/api/payment/sync/:orderCode', paymentController.syncPaymentStatus);
     // ===== HEALTH CHECK =====
     router.get('/api/health', (req, res) => {
         res.status(200).json({

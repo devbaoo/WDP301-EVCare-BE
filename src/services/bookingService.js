@@ -4,6 +4,7 @@ import ServiceCenter from "../models/serviceCenter.js";
 import ServiceType from "../models/serviceType.js";
 import User from "../models/user.js";
 import emailService from "./emailService.js";
+import payosService from "./payosService.js";
 
 // Lấy danh sách xe của customer
 const getCustomerVehicles = async (customerId) => {
@@ -416,11 +417,37 @@ const createBooking = async (bookingData) => {
             // Don't fail the booking if email fails
         }
 
+        // Check if payment is required
+        const requiresPayment = appointment.serviceDetails.estimatedCost > 0;
+        let paymentInfo = null;
+
+        // Only create payment if PayOS is properly configured
+        if (requiresPayment && process.env.PAYOS_CLIENT_ID && process.env.PAYOS_API_KEY && process.env.PAYOS_CHECKSUM_KEY) {
+            // Create payment link
+            try {
+                const paymentResult = await payosService.createBookingPayment(appointment._id, customerId);
+                if (paymentResult.success) {
+                    paymentInfo = paymentResult.data;
+                }
+            } catch (paymentError) {
+                console.error("Create payment error:", paymentError);
+                // Don't fail the booking if payment creation fails
+            }
+        } else if (requiresPayment) {
+            console.log("PayOS not configured, skipping payment creation");
+        }
+
         return {
             success: true,
             statusCode: 201,
-            message: "Tạo booking thành công. Vui lòng chờ xác nhận từ trung tâm.",
-            data: appointment,
+            message: requiresPayment
+                ? "Tạo booking thành công. Vui lòng thanh toán để xác nhận lịch hẹn."
+                : "Tạo booking thành công. Vui lòng chờ xác nhận từ trung tâm.",
+            data: {
+                appointment,
+                payment: paymentInfo,
+                requiresPayment,
+            },
         };
     } catch (error) {
         console.error("Create booking error:", error);
