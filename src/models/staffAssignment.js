@@ -1,39 +1,42 @@
-const mongoose = require('mongoose');
+import mongoose from "mongoose";
 
-const StaffAssignmentSchema = new mongoose.Schema({
+const StaffAssignmentSchema = new mongoose.Schema(
+  {
     userId: {
-        type: mongoose.Schema.Types.ObjectId,
-        ref: 'User',
-        required: true
+      type: mongoose.Schema.Types.ObjectId,
+      ref: "User",
+      required: true,
     },
     centerId: {
-        type: mongoose.Schema.Types.ObjectId,
-        ref: 'ServiceCenter',
-        required: true
+      type: mongoose.Schema.Types.ObjectId,
+      ref: "ServiceCenter",
+      required: true,
     },
     position: {
-        type: String,
-        enum: ['manager', 'staff', 'technician'],
-        maxlength: 50,
-        required: true
+      type: String,
+      enum: ["manager", "staff", "technician"],
+      maxlength: 50,
+      required: true,
     },
     startDate: {
-        type: Date,
-        required: true
+      type: Date,
+      required: true,
     },
     endDate: {
-        type: Date
+      type: Date,
     },
     isActive: {
-        type: Boolean,
-        default: true
+      type: Boolean,
+      default: true,
     },
     createdAt: {
-        type: Date,
-        default: Date.now
-    }
-}, {
-    timestamps: { createdAt: 'createdAt', updatedAt: 'updatedAt' }
-});
+      type: Date,
+      default: Date.now,
+    },
+  },
+  {
+    timestamps: { createdAt: "createdAt", updatedAt: "updatedAt" },
+  }
+);
 
-module.exports = mongoose.model('StaffAssignment', StaffAssignmentSchema);
+export default mongoose.model("StaffAssignment", StaffAssignmentSchema);

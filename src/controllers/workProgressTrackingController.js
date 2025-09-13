@@ -1,0 +1,512 @@
+import workProgressTrackingService from "../services/workProgressTrackingService.js";
+
+const workProgressTrackingController = {
+  // Get all progress records
+  getAllProgressRecords: async (req, res) => {
+    try {
+      const { technicianId, appointmentId, serviceDate, currentStatus } =
+        req.query;
+      const filters = {};
+
+      if (technicianId) filters.technicianId = technicianId;
+      if (appointmentId) filters.appointmentId = appointmentId;
+      if (currentStatus) filters.currentStatus = currentStatus;
+
+      // Handle date filtering
+      if (serviceDate) {
+        const date = new Date(serviceDate);
+        date.setHours(0, 0, 0, 0);
+
+        const nextDay = new Date(date);
+        nextDay.setDate(nextDay.getDate() + 1);
+
+        filters.serviceDate = {
+          $gte: date,
+          $lt: nextDay,
+        };
+      }
+
+      const progressRecords =
+        await workProgressTrackingService.getAllProgressRecords(filters);
+
+      res.status(200).json({
+        success: true,
+        data: progressRecords,
+      });
+    } catch (error) {
+      res.status(500).json({
+        success: false,
+        message: error.message || "Failed to fetch progress records",
+      });
+    }
+  },
+
+  // Get progress record by ID
+  getProgressRecordById: async (req, res) => {
+    try {
+      const { id } = req.params;
+      const progressRecord =
+        await workProgressTrackingService.getProgressRecordById(id);
+
+      if (!progressRecord) {
+        return res.status(404).json({
+          success: false,
+          message: "Progress record not found",
+        });
+      }
+
+      res.status(200).json({
+        success: true,
+        data: progressRecord,
+      });
+    } catch (error) {
+      res.status(500).json({
+        success: false,
+        message: error.message || "Failed to fetch progress record",
+      });
+    }
+  },
+
+  // Create new progress record
+  createProgressRecord: async (req, res) => {
+    try {
+      const {
+        technicianId,
+        appointmentId,
+        serviceRecordId,
+        serviceDate,
+        startTime,
+        currentStatus,
+        milestones,
+        supervisorId,
+        notes,
+      } = req.body;
+
+      // Validate required fields
+      if (!technicianId || !appointmentId || !serviceDate) {
+        return res.status(400).json({
+          success: false,
+          message: "Missing required fields",
+        });
+      }
+
+      const newProgressRecord =
+        await workProgressTrackingService.createProgressRecord({
+          technicianId,
+          appointmentId,
+          serviceRecordId,
+          serviceDate,
+          startTime: startTime || new Date(),
+          currentStatus: currentStatus || "not_started",
+          milestones,
+          supervisorId,
+          notes,
+        });
+
+      res.status(201).json({
+        success: true,
+        data: newProgressRecord,
+        message: "Progress record created successfully",
+      });
+    } catch (error) {
+      res.status(500).json({
+        success: false,
+        message: error.message || "Failed to create progress record",
+      });
+    }
+  },
+
+  // Update progress record
+  updateProgressRecord: async (req, res) => {
+    try {
+      const { id } = req.params;
+      const {
+        serviceRecordId,
+        endTime,
+        currentStatus,
+        progressPercentage,
+        timeSpent,
+        pauseTime,
+        notes,
+        supervisorId,
+        supervisorNotes,
+      } = req.body;
+
+      const updatedRecord =
+        await workProgressTrackingService.updateProgressRecord(id, {
+          serviceRecordId,
+          endTime,
+          currentStatus,
+          progressPercentage,
+          timeSpent,
+          pauseTime,
+          notes,
+          supervisorId,
+          supervisorNotes,
+        });
+
+      if (!updatedRecord) {
+        return res.status(404).json({
+          success: false,
+          message: "Progress record not found",
+        });
+      }
+
+      res.status(200).json({
+        success: true,
+        data: updatedRecord,
+        message: "Progress record updated successfully",
+      });
+    } catch (error) {
+      res.status(500).json({
+        success: false,
+        message: error.message || "Failed to update progress record",
+      });
+    }
+  },
+
+  // Delete progress record
+  deleteProgressRecord: async (req, res) => {
+    try {
+      const { id } = req.params;
+      const deleted = await workProgressTrackingService.deleteProgressRecord(
+        id
+      );
+
+      if (!deleted) {
+        return res.status(404).json({
+          success: false,
+          message: "Progress record not found",
+        });
+      }
+
+      res.status(200).json({
+        success: true,
+        message: "Progress record deleted successfully",
+      });
+    } catch (error) {
+      res.status(500).json({
+        success: false,
+        message: error.message || "Failed to delete progress record",
+      });
+    }
+  },
+
+  // Get progress records by technician
+  getProgressRecordsByTechnician: async (req, res) => {
+    try {
+      const { technicianId } = req.params;
+      const { startDate, endDate } = req.query;
+
+      const progressRecords =
+        await workProgressTrackingService.getProgressRecordsByTechnician(
+          technicianId,
+          startDate,
+          endDate
+        );
+
+      res.status(200).json({
+        success: true,
+        data: progressRecords,
+      });
+    } catch (error) {
+      res.status(500).json({
+        success: false,
+        message:
+          error.message || "Failed to fetch progress records by technician",
+      });
+    }
+  },
+
+  // Get progress record by appointment
+  getProgressRecordByAppointment: async (req, res) => {
+    try {
+      const { appointmentId } = req.params;
+
+      const progressRecord =
+        await workProgressTrackingService.getProgressRecordByAppointment(
+          appointmentId
+        );
+
+      if (!progressRecord) {
+        return res.status(404).json({
+          success: false,
+          message: "Progress record not found for this appointment",
+        });
+      }
+
+      res.status(200).json({
+        success: true,
+        data: progressRecord,
+      });
+    } catch (error) {
+      res.status(500).json({
+        success: false,
+        message:
+          error.message || "Failed to fetch progress record by appointment",
+      });
+    }
+  },
+
+  // Update progress status
+  updateProgressStatus: async (req, res) => {
+    try {
+      const { id } = req.params;
+      const { status, progressPercentage } = req.body;
+
+      if (!status) {
+        return res.status(400).json({
+          success: false,
+          message: "Status is required",
+        });
+      }
+
+      const updatedRecord =
+        await workProgressTrackingService.updateProgressStatus(
+          id,
+          status,
+          progressPercentage
+        );
+
+      res.status(200).json({
+        success: true,
+        data: updatedRecord,
+        message: "Progress status updated successfully",
+      });
+    } catch (error) {
+      res.status(500).json({
+        success: false,
+        message: error.message || "Failed to update progress status",
+      });
+    }
+  },
+
+  // Add milestone
+  addMilestone: async (req, res) => {
+    try {
+      const { id } = req.params;
+      const { name, description } = req.body;
+
+      if (!name) {
+        return res.status(400).json({
+          success: false,
+          message: "Milestone name is required",
+        });
+      }
+
+      const updatedRecord = await workProgressTrackingService.addMilestone(id, {
+        name,
+        description,
+      });
+
+      res.status(200).json({
+        success: true,
+        data: updatedRecord,
+        message: "Milestone added successfully",
+      });
+    } catch (error) {
+      res.status(500).json({
+        success: false,
+        message: error.message || "Failed to add milestone",
+      });
+    }
+  },
+
+  // Complete milestone
+  completeMilestone: async (req, res) => {
+    try {
+      const { id, milestoneId } = req.params;
+
+      const updatedRecord = await workProgressTrackingService.completeMilestone(
+        id,
+        milestoneId
+      );
+
+      res.status(200).json({
+        success: true,
+        data: updatedRecord,
+        message: "Milestone completed successfully",
+      });
+    } catch (error) {
+      res.status(500).json({
+        success: false,
+        message: error.message || "Failed to complete milestone",
+      });
+    }
+  },
+
+  // Report issue
+  reportIssue: async (req, res) => {
+    try {
+      const { id } = req.params;
+      const { description } = req.body;
+
+      if (!description) {
+        return res.status(400).json({
+          success: false,
+          message: "Issue description is required",
+        });
+      }
+
+      const updatedRecord = await workProgressTrackingService.reportIssue(id, {
+        description,
+      });
+
+      res.status(200).json({
+        success: true,
+        data: updatedRecord,
+        message: "Issue reported successfully",
+      });
+    } catch (error) {
+      res.status(500).json({
+        success: false,
+        message: error.message || "Failed to report issue",
+      });
+    }
+  },
+
+  // Resolve issue
+  resolveIssue: async (req, res) => {
+    try {
+      const { id, issueId } = req.params;
+
+      const updatedRecord = await workProgressTrackingService.resolveIssue(
+        id,
+        issueId
+      );
+
+      res.status(200).json({
+        success: true,
+        data: updatedRecord,
+        message: "Issue resolved successfully",
+      });
+    } catch (error) {
+      res.status(500).json({
+        success: false,
+        message: error.message || "Failed to resolve issue",
+      });
+    }
+  },
+
+  // Add supervisor notes
+  addSupervisorNotes: async (req, res) => {
+    try {
+      const { id } = req.params;
+      const { supervisorId, notes } = req.body;
+
+      if (!supervisorId || !notes) {
+        return res.status(400).json({
+          success: false,
+          message: "Supervisor ID and notes are required",
+        });
+      }
+
+      const updatedRecord =
+        await workProgressTrackingService.addSupervisorNotes(
+          id,
+          supervisorId,
+          notes
+        );
+
+      res.status(200).json({
+        success: true,
+        data: updatedRecord,
+        message: "Supervisor notes added successfully",
+      });
+    } catch (error) {
+      res.status(500).json({
+        success: false,
+        message: error.message || "Failed to add supervisor notes",
+      });
+    }
+  },
+
+  // Calculate efficiency
+  calculateEfficiency: async (req, res) => {
+    try {
+      const { id } = req.params;
+
+      const updatedRecord =
+        await workProgressTrackingService.calculateEfficiency(id);
+
+      res.status(200).json({
+        success: true,
+        data: updatedRecord,
+        message: "Efficiency calculated successfully",
+      });
+    } catch (error) {
+      res.status(500).json({
+        success: false,
+        message: error.message || "Failed to calculate efficiency",
+      });
+    }
+  },
+
+  // Get technician performance metrics
+  getTechnicianPerformance: async (req, res) => {
+    try {
+      const { technicianId } = req.params;
+      const { startDate, endDate } = req.query;
+
+      if (!startDate || !endDate) {
+        return res.status(400).json({
+          success: false,
+          message: "Start date and end date are required",
+        });
+      }
+
+      const performanceMetrics =
+        await workProgressTrackingService.getTechnicianPerformance(
+          technicianId,
+          startDate,
+          endDate
+        );
+
+      res.status(200).json({
+        success: true,
+        data: performanceMetrics,
+      });
+    } catch (error) {
+      res.status(500).json({
+        success: false,
+        message:
+          error.message || "Failed to fetch technician performance metrics",
+      });
+    }
+  },
+
+  // Get service center performance metrics
+  getServiceCenterPerformance: async (req, res) => {
+    try {
+      const { centerId } = req.params;
+      const { startDate, endDate } = req.query;
+
+      if (!startDate || !endDate) {
+        return res.status(400).json({
+          success: false,
+          message: "Start date and end date are required",
+        });
+      }
+
+      const performanceMetrics =
+        await workProgressTrackingService.getServiceCenterPerformance(
+          centerId,
+          startDate,
+          endDate
+        );
+
+      res.status(200).json({
+        success: true,
+        data: performanceMetrics,
+      });
+    } catch (error) {
+      res.status(500).json({
+        success: false,
+        message:
+          error.message || "Failed to fetch service center performance metrics",
+      });
+    }
+  },
+};
+
+export default workProgressTrackingController;
