@@ -185,6 +185,32 @@ const cancelBooking = async (req, res) => {
     }
 };
 
+// Dời lịch booking
+const rescheduleBooking = async (req, res) => {
+    try {
+        const { bookingId } = req.params;
+        const customerId = req.user.id;
+        const { newDate, newTime } = req.body;
+
+        const result = await bookingService.rescheduleBooking(bookingId, customerId, {
+            newDate,
+            newTime
+        });
+
+        return res.status(result.statusCode).json({
+            success: result.success,
+            message: result.message,
+            data: result.data,
+        });
+    } catch (error) {
+        console.error("Reschedule booking error:", error);
+        res.status(500).json({
+            success: false,
+            message: "Server error",
+        });
+    }
+};
+
 // Lấy chi tiết booking
 const getBookingDetails = async (req, res) => {
     try {
@@ -265,5 +291,6 @@ export default {
     createBooking,
     getCustomerBookings,
     cancelBooking,
+    rescheduleBooking,
     getBookingDetails,
 };

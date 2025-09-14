@@ -329,6 +329,7 @@ const createBooking = async (bookingData) => {
             vehicleId,
             serviceCenterId,
             serviceTypeId,
+            servicePackageId, // Thêm support cho service package
             appointmentDate,
             appointmentTime,
             serviceDescription,
@@ -371,6 +372,45 @@ const createBooking = async (bookingData) => {
             };
         }
 
+        // Check if using service package
+        let servicePackage = null;
+        let isFromPackage = false;
+        let estimatedCost = serviceType.pricing.basePrice;
+
+        if (servicePackageId) {
+            const CustomerPackage = (await import("../models/customerPackage.js")).default;
+            const ServicePackage = (await import("../models/servicePackage.js")).default;
+
+            servicePackage = await CustomerPackage.findOne({
+                _id: servicePackageId,
+                customerId,
+                vehicleId,
+                status: 'active',
+                remainingServices: { $gt: 0 }
+            }).populate('packageId');
+
+            if (!servicePackage) {
+                return {
+                    success: false,
+                    statusCode: 400,
+                    message: "Gói dịch vụ không hợp lệ hoặc đã hết lượt sử dụng",
+                };
+            }
+
+            // Check if service type is included in package
+            const isServiceIncluded = servicePackage.packageId.includedServices.includes(serviceTypeId);
+            if (!isServiceIncluded) {
+                return {
+                    success: false,
+                    statusCode: 400,
+                    message: "Loại dịch vụ này không có trong gói đã chọn",
+                };
+            }
+
+            isFromPackage = true;
+            estimatedCost = 0; // Free when using package
+        }
+
         // Calculate end time
         const duration = serviceType.serviceDetails.duration;
         const [startHour, startMin] = appointmentTime.split(":").map(Number);
@@ -394,7 +434,9 @@ const createBooking = async (bookingData) => {
             serviceDetails: {
                 description: serviceDescription,
                 priority: priority,
-                estimatedCost: serviceType.pricing.basePrice,
+                estimatedCost: estimatedCost,
+                isFromPackage: isFromPackage,
+                servicePackageId: servicePackageId,
             },
             status: "pending_confirmation",
         });
@@ -415,6 +457,12 @@ const createBooking = async (bookingData) => {
         } catch (emailError) {
             console.error("Send booking confirmation email error:", emailError);
             // Don't fail the booking if email fails
+        }
+
+        // Update remaining services if using package
+        if (isFromPackage && servicePackage) {
+            servicePackage.remainingServices -= 1;
+            await servicePackage.save();
         }
 
         // Check if payment is required
@@ -554,6 +602,114 @@ const cancelBooking = async (bookingId, customerId, reason) => {
     }
 };
 
+// Dời lịch booking
+const rescheduleBooking = async (bookingId, customerId, rescheduleData) => {
+    try {
+        const { newDate, newTime } = rescheduleData;
+
+        // Validate required fields
+        if (!newDate || !newTime) {
+            return {
+                success: false,
+                statusCode: 400,
+                message: "Thiếu thông tin ngày và giờ mới",
+            };
+        }
+
+        // Find the appointment
+        const appointment = await Appointment.findOne({
+            _id: bookingId,
+            customer: customerId,
+        }).populate("serviceType", "serviceDetails");
+
+        if (!appointment) {
+            return {
+                success: false,
+                statusCode: 404,
+                message: "Không tìm thấy booking hoặc bạn không có quyền dời lịch",
+            };
+        }
+
+        // Check if appointment can be rescheduled
+        if (!["pending_confirmation", "confirmed"].includes(appointment.status)) {
+            return {
+                success: false,
+                statusCode: 400,
+                message: "Chỉ có thể dời lịch khi booking đang chờ xác nhận hoặc đã xác nhận",
+            };
+        }
+
+        // Check if new date is in the future
+        const newAppointmentDate = new Date(newDate);
+        const now = new Date();
+        if (newAppointmentDate <= now) {
+            return {
+                success: false,
+                statusCode: 400,
+                message: "Ngày hẹn mới phải trong tương lai",
+            };
+        }
+
+        // Calculate new end time
+        const duration = appointment.serviceType.serviceDetails.duration;
+        const [startHour, startMin] = newTime.split(":").map(Number);
+        const endMinutes = startHour * 60 + startMin + duration;
+        const endHour = Math.floor(endMinutes / 60);
+        const endMin = endMinutes % 60;
+        const endTime = `${endHour.toString().padStart(2, '0')}:${endMin.toString().padStart(2, '0')}`;
+
+        // Update appointment
+        appointment.appointmentTime = {
+            date: newAppointmentDate,
+            startTime: newTime,
+            endTime: endTime,
+            duration: duration,
+        };
+        appointment.status = "pending_confirmation"; // Reset to pending confirmation
+        appointment.rescheduleHistory = appointment.rescheduleHistory || [];
+        appointment.rescheduleHistory.push({
+            oldDate: appointment.appointmentTime.date,
+            oldTime: appointment.appointmentTime.startTime,
+            newDate: newAppointmentDate,
+            newTime: newTime,
+            rescheduledAt: new Date(),
+            rescheduledBy: customerId,
+        });
+
+        await appointment.save();
+
+        // Populate for response
+        await appointment.populate([
+            { path: "customer", select: "username fullName email phone" },
+            { path: "vehicle", select: "vehicleInfo" },
+            { path: "serviceCenter", select: "name address contact" },
+            { path: "serviceType", select: "name category pricing" },
+        ]);
+
+        // Send reschedule confirmation email
+        try {
+            await emailService.sendRescheduleConfirmation(appointment);
+        } catch (emailError) {
+            console.error("Send reschedule confirmation email error:", emailError);
+            // Don't fail the reschedule if email fails
+        }
+
+        return {
+            success: true,
+            statusCode: 200,
+            message: "Dời lịch thành công. Vui lòng chờ xác nhận từ trung tâm.",
+            data: appointment,
+        };
+    } catch (error) {
+        console.error("Reschedule booking error:", error);
+        return {
+            success: false,
+            statusCode: 500,
+            message: "Lỗi khi dời lịch booking",
+        };
+    }
+};
+
 export default {
     getCustomerVehicles,
     addCustomerVehicle,
@@ -563,4 +719,5 @@ export default {
     createBooking,
     getCustomerBookings,
     cancelBooking,
+    rescheduleBooking,
 };
