@@ -537,12 +537,117 @@ const getCustomerPayments = async (customerId, filters = {}) => {
     }
 };
 
+// Create payment for subscription
+const createSubscriptionPayment = async (subscriptionId, customerId) => {
+    try {
+        const CustomerPackage = (await import("../models/customerPackage.js")).default;
+
+        // Get subscription details
+        const subscription = await CustomerPackage.findById(subscriptionId)
+            .populate('customerId', 'username fullName email')
+            .populate('vehicleId', 'vehicleInfo')
+            .populate('packageId', 'packageName description price');
+
+        if (!subscription) {
+            return {
+                success: false,
+                statusCode: 404,
+                message: "Không tìm thấy gói đăng ký",
+            };
+        }
+
+        // Check if customer owns this subscription
+        if (subscription.customerId._id.toString() !== customerId) {
+            return {
+                success: false,
+                statusCode: 403,
+                message: "Bạn không có quyền thanh toán cho gói này",
+            };
+        }
+
+        // Check if payment already exists
+        const existingPayment = await Payment.findOne({
+            subscription: subscriptionId,
+            status: { $in: ["pending", "paid"] },
+        });
+
+        if (existingPayment) {
+            return {
+                success: false,
+                statusCode: 400,
+                message: "Gói này đã có thanh toán",
+                data: existingPayment,
+            };
+        }
+
+        const amount = subscription.packageId.price;
+        const description = `Thanh toán gói dịch vụ ${subscription.packageId.packageName}`;
+
+        // Create payment link
+        const paymentLinkResult = await createPaymentLink({
+            amount: amount,
+            description: description,
+            items: [
+                {
+                    name: subscription.packageId.packageName,
+                    quantity: 1,
+                    price: amount,
+                },
+            ],
+        });
+
+        if (!paymentLinkResult.success) {
+            return {
+                success: false,
+                statusCode: 400,
+                message: "Không thể tạo link thanh toán",
+            };
+        }
+
+        // Create payment record
+        const payment = new Payment({
+            subscription: subscriptionId,
+            customer: customerId,
+            paymentInfo: {
+                amount: amount,
+                currency: "VND",
+                description: description,
+                orderCode: paymentLinkResult.data.orderCode,
+            },
+            payosInfo: paymentLinkResult.data,
+            status: "pending",
+            paymentMethod: "payos",
+        });
+
+        await payment.save();
+
+        return {
+            success: true,
+            statusCode: 200,
+            message: "Tạo thanh toán gói dịch vụ thành công",
+            data: {
+                payment,
+                paymentLink: paymentLinkResult.data.checkoutUrl,
+                qrCode: paymentLinkResult.data.qrCode,
+            },
+        };
+    } catch (error) {
+        console.error("Create subscription payment error:", error);
+        return {
+            success: false,
+            statusCode: 500,
+            message: "Lỗi khi tạo thanh toán gói dịch vụ",
+        };
+    }
+};
+
 export default {
     createPaymentLink,
     createMockPaymentLink,
     getPaymentInfo,
     cancelPayment,
     createBookingPayment,
+    createSubscriptionPayment,
     handleWebhook,
     getPaymentStatus,
     cancelBookingPayment,

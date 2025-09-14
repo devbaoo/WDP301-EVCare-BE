@@ -7,6 +7,8 @@ import serviceTypeController from "../controllers/serviceTypeController.js";
 import bookingController from "../controllers/bookingController.js";
 import vehicleModelController from "../controllers/vehicleModelController.js";
 import paymentController from "../controllers/paymentController.js";
+import servicePackageController from "../controllers/servicePackageController.js";
+import subscriptionController from "../controllers/subscriptionController.js";
 import staffAssignmentController from "../controllers/staffAssignmentController.js";
 import technicianCertificateController from "../controllers/technicianCertificateController.js";
 import technicianScheduleController from "../controllers/technicianScheduleController.js";
@@ -273,6 +275,11 @@ let initWebRoutes = (app) => {
         protect,
         bookingController.cancelBooking
     );
+    router.put(
+        "/api/booking/:bookingId/reschedule",
+        protect,
+        bookingController.rescheduleBooking
+    );
 
     // ===== PAYMENT ROUTES =====
 
@@ -310,6 +317,27 @@ let initWebRoutes = (app) => {
         "/api/payment/sync/:orderCode",
         paymentController.syncPaymentStatus
     );
+
+    // ===== SERVICE PACKAGE ROUTES =====
+
+    // Public routes
+    router.get("/api/service-packages", servicePackageController.getAllServicePackages);
+    router.get("/api/service-packages/:id", servicePackageController.getServicePackageById);
+    router.get("/api/service-packages/vehicle/:vehicleId/compatible", servicePackageController.getCompatiblePackages);
+
+    // Admin routes
+    router.post("/api/service-packages", protect, authorize("admin"), servicePackageController.createServicePackage);
+    router.put("/api/service-packages/:id", protect, authorize("admin"), servicePackageController.updateServicePackage);
+    router.delete("/api/service-packages/:id", protect, authorize("admin"), servicePackageController.deleteServicePackage);
+
+    // ===== SUBSCRIPTION ROUTES =====
+
+    // Subscription management (protected - customer only)
+    router.get("/api/subscriptions", protect, subscriptionController.getCustomerSubscriptions);
+    router.post("/api/subscriptions", protect, subscriptionController.subscribeToPackage);
+    router.put("/api/subscriptions/:subscriptionId/renew", protect, subscriptionController.renewSubscription);
+    router.put("/api/subscriptions/:subscriptionId/cancel", protect, subscriptionController.cancelSubscription);
+    router.get("/api/subscriptions/:subscriptionId/usage", protect, subscriptionController.getSubscriptionUsage);
 
     // ===== STAFF ASSIGNMENT ROUTES =====
 
