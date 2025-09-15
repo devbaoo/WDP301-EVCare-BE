@@ -8,15 +8,17 @@ Tài liệu này cung cấp lộ trình phát triển frontend dựa trên các 
 
 ### Xác thực (Authentication)
 
-| Endpoint                          | Method | Mô tả                 | Quyền truy cập |
-| --------------------------------- | ------ | --------------------- | -------------- |
-| `/api/auth/register`              | POST   | Đăng ký tài khoản mới | Public         |
-| `/api/auth/login`                 | POST   | Đăng nhập             | Public         |
-| `/api/auth/google-login`          | POST   | Đăng nhập bằng Google | Public         |
-| `/api/auth/refresh-token`         | POST   | Làm mới access token  | Public         |
-| `/api/auth/forgot-password`       | POST   | Quên mật khẩu         | Public         |
-| `/api/auth/reset-password/:token` | POST   | Đặt lại mật khẩu      | Public         |
-| `/api/auth/change-password`       | POST   | Đổi mật khẩu          | Authenticated  |
+| Endpoint                          | Method | Mô tả                  | Quyền truy cập |
+| --------------------------------- | ------ | ---------------------- | -------------- |
+| `/api/auth/register`              | POST   | Đăng ký tài khoản mới  | Public         |
+| `/api/auth/login`                 | POST   | Đăng nhập              | Public         |
+| `/api/auth/google-login`          | POST   | Đăng nhập bằng Google  | Public         |
+| `/api/auth/refresh-token`         | POST   | Làm mới access token   | Public         |
+| `/api/auth/forgot-password`       | POST   | Quên mật khẩu          | Public         |
+| `/api/auth/reset-password/:token` | POST   | Đặt lại mật khẩu       | Public         |
+| `/api/auth/change-password`       | POST   | Đổi mật khẩu           | Authenticated  |
+| `/api/auth/verify-email/:token`   | GET    | Xác thực email         | Public         |
+| `/api/auth/resend-verification`   | POST   | Gửi lại email xác thực | Public         |
 
 ### Quản lý người dùng (User Management)
 
@@ -41,6 +43,7 @@ Tài liệu này cung cấp lộ trình phát triển frontend dựa trên các 
 | `/api/vehicle-models`              | POST   | Tạo model xe mới               | Admin          |
 | `/api/vehicle-models/:id`          | PUT    | Cập nhật model xe              | Admin          |
 | `/api/vehicle-models/:id`          | DELETE | Xóa model xe                   | Admin          |
+| `/api/vehicle-models/sample-data`  | POST   | Tạo dữ liệu mẫu                | Admin          |
 
 ### Xe của khách hàng (Customer Vehicles)
 
@@ -103,7 +106,60 @@ Tài liệu này cung cấp lộ trình phát triển frontend dựa trên các 
 | `/api/booking/my-bookings`                                                    | GET    | Lấy danh sách booking của khách hàng   | Authenticated  |
 | `/api/booking/:bookingId`                                                     | GET    | Lấy chi tiết booking                   | Authenticated  |
 | `/api/booking/:bookingId/cancel`                                              | PUT    | Hủy booking                            | Authenticated  |
+| `/api/booking/:bookingId/reschedule`                                          | PUT    | Đổi lịch hẹn                           | Authenticated  |
 | `/api/appointments/:appointmentId/progress`                                   | GET    | Lấy tiến độ của lịch hẹn               | Authenticated  |
+
+## 💰 Thanh toán (Payment)
+
+### Quản lý thanh toán
+
+| Endpoint                              | Method | Mô tả                          | Quyền truy cập |
+| ------------------------------------- | ------ | ------------------------------ | -------------- |
+| `/api/payment/booking/:appointmentId` | POST   | Tạo thanh toán cho booking     | Authenticated  |
+| `/api/payment/:paymentId/status`      | GET    | Kiểm tra trạng thái thanh toán | Authenticated  |
+| `/api/payment/:orderCode/cancel`      | PUT    | Hủy thanh toán                 | Authenticated  |
+| `/api/payment/my-payments`            | GET    | Lấy lịch sử thanh toán         | Authenticated  |
+| `/api/payment/webhook`                | POST   | Webhook từ cổng thanh toán     | Public         |
+| `/api/payment/sync/:orderCode`        | POST   | Đồng bộ trạng thái thanh toán  | Public         |
+
+### Trang thanh toán
+
+| Endpoint           | Method | Mô tả                       | Quyền truy cập |
+| ------------------ | ------ | --------------------------- | -------------- |
+| `/payment/success` | GET    | Trang thanh toán thành công | Public         |
+| `/payment/cancel`  | GET    | Trang hủy thanh toán        | Public         |
+
+## 📊 Phân tích chi phí (Cost Analytics)
+
+| Endpoint             | Method | Mô tả                | Quyền truy cập |
+| -------------------- | ------ | -------------------- | -------------- |
+| `/api/costs/history` | GET    | Lấy lịch sử chi phí  | Authenticated  |
+| `/api/costs/summary` | GET    | Lấy tổng hợp chi phí | Authenticated  |
+
+## 📦 Gói dịch vụ (Service Packages)
+
+### Quản lý gói dịch vụ
+
+| Endpoint                                              | Method | Mô tả                              | Quyền truy cập |
+| ----------------------------------------------------- | ------ | ---------------------------------- | -------------- |
+| `/api/service-packages`                               | GET    | Lấy danh sách gói dịch vụ          | Public         |
+| `/api/service-packages/:id`                           | GET    | Lấy thông tin gói dịch vụ theo ID  | Public         |
+| `/api/service-packages/vehicle/:vehicleId/compatible` | GET    | Lấy gói dịch vụ tương thích với xe | Public         |
+| `/api/service-packages`                               | POST   | Tạo gói dịch vụ mới                | Admin          |
+| `/api/service-packages/:id`                           | PUT    | Cập nhật gói dịch vụ               | Admin          |
+| `/api/service-packages/:id`                           | DELETE | Xóa gói dịch vụ                    | Admin          |
+
+## 🔄 Đăng ký gói dịch vụ (Subscriptions)
+
+### Quản lý đăng ký
+
+| Endpoint                                    | Method | Mô tả                     | Quyền truy cập |
+| ------------------------------------------- | ------ | ------------------------- | -------------- |
+| `/api/subscriptions`                        | GET    | Lấy danh sách đăng ký     | Authenticated  |
+| `/api/subscriptions`                        | POST   | Đăng ký gói dịch vụ mới   | Authenticated  |
+| `/api/subscriptions/:subscriptionId/renew`  | PUT    | Gia hạn đăng ký           | Authenticated  |
+| `/api/subscriptions/:subscriptionId/cancel` | PUT    | Hủy đăng ký               | Authenticated  |
+| `/api/subscriptions/:subscriptionId/usage`  | GET    | Xem thông tin sử dụng gói | Authenticated  |
 
 ## 👨‍🔧 Quản lý kỹ thuật viên
 
@@ -171,6 +227,16 @@ Tài liệu này cung cấp lộ trình phát triển frontend dựa trên các 
 | `/api/work-progress/:id/calculate-efficiency`             | POST   | Tính toán hiệu suất             | Admin, Manager             |
 | `/api/technicians/:technicianId/performance`              | GET    | Lấy hiệu suất của kỹ thuật viên | Admin, Manager             |
 
+## 📊 Quy trình kiểm tra và báo giá (Inspection & Quote)
+
+| Endpoint                                      | Method | Mô tả                                | Quyền truy cập           |
+| --------------------------------------------- | ------ | ------------------------------------ | ------------------------ |
+| `/api/work-progress/:id/inspection-quote`     | POST   | Gửi kết quả kiểm tra và báo giá      | Technician               |
+| `/api/work-progress/:id/quote-response`       | PUT    | Phản hồi báo giá (chấp nhận/từ chối) | Authenticated (Customer) |
+| `/api/work-progress/:id/start-maintenance`    | POST   | Bắt đầu bảo dưỡng sau khi chấp nhận  | Technician               |
+| `/api/work-progress/:id/complete-maintenance` | POST   | Hoàn thành bảo dưỡng                 | Technician               |
+| `/api/work-progress/:id/process-payment`      | POST   | Xử lý thanh toán tiền mặt            | Admin, Manager, Staff    |
+
 ## 🚨 Xử lý lỗi
 
 Tất cả API đều trả về format chuẩn:
@@ -223,6 +289,7 @@ Authorization: Bearer <access_token>
 4. **Theo dõi tiến độ dịch vụ**
    - Xem tiến độ công việc
    - Nhận thông báo khi hoàn thành
+   - Phản hồi báo giá (nếu có)
 
 ### 2. Luồng quản lý (Admin/Manager Flow)
 
@@ -259,6 +326,14 @@ Authorization: Bearer <access_token>
    - Thêm mốc tiến độ
    - Báo cáo vấn đề
    - Giải quyết vấn đề
+   - Gửi kết quả kiểm tra và báo giá
+   - Thực hiện bảo dưỡng sau khi khách hàng chấp nhận báo giá
+
+### 4. Luồng nhân viên (Staff Flow)
+
+1. **Xử lý thanh toán**
+   - Xác nhận thanh toán tiền mặt
+   - Cập nhật trạng thái thanh toán
 
 ## 📱 Gợi ý phát triển Frontend
 
@@ -293,6 +368,7 @@ Authorization: Bearer <access_token>
 - Chi tiết đặt lịch
 - Theo dõi tiến độ
 - Hủy đặt lịch
+- Phản hồi báo giá (chấp nhận/từ chối)
 
 ### 6. Trang quản lý (Admin/Manager)
 
@@ -308,3 +384,17 @@ Authorization: Bearer <access_token>
 - Quản lý công việc
 - Cập nhật tiến độ
 - Báo cáo vấn đề
+- Gửi kết quả kiểm tra và báo giá
+- Hoàn thành bảo dưỡng
+
+### 8. Trang nhân viên (Staff)
+
+- Xử lý thanh toán
+- Xem lịch hẹn hiện tại
+- Quản lý khách hàng
+
+## 🔍 Health Check
+
+| Endpoint      | Method | Mô tả                   | Quyền truy cập |
+| ------------- | ------ | ----------------------- | -------------- |
+| `/api/health` | GET    | Kiểm tra trạng thái API | Public         |
