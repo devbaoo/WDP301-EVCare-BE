@@ -246,9 +246,54 @@ const getAvailableSlots = async (serviceCenterId, serviceTypeId, date) => {
         const serviceDuration = serviceType.serviceDetails.duration; // minutes
         const workingHours = serviceCenter.operatingHours;
 
-        // Get day of week
-        const dayOfWeek = new Date(date).toLocaleLowerCase().substring(0, 3);
-        const todaySchedule = workingHours[dayOfWeek];
+        // Validate date
+        const dateObj = new Date(date);
+        if (isNaN(dateObj.getTime())) {
+            return {
+                success: false,
+                statusCode: 400,
+                message: "Ngày không hợp lệ",
+            };
+        }
+
+        // Validate center status
+        if (serviceCenter.status && serviceCenter.status !== 'active') {
+            return {
+                success: false,
+                statusCode: 400,
+                message: "Trung tâm đang tạm ngưng hoạt động",
+            };
+        }
+
+        // Validate operating hours
+        if (!workingHours || typeof workingHours !== 'object') {
+            return {
+                success: false,
+                statusCode: 400,
+                message: "Trung tâm chưa cấu hình giờ làm việc",
+            };
+        }
+
+        // Resolve day key across common formats
+        const dayIndex = dateObj.getDay(); // 0=Sun ... 6=Sat
+        const shortKeys = ['sun', 'mon', 'tue', 'wed', 'thu', 'fri', 'sat'];
+        const longKeys = ['sunday', 'monday', 'tuesday', 'wednesday', 'thursday', 'friday', 'saturday'];
+        const keyCandidates = [
+            shortKeys[dayIndex],
+            longKeys[dayIndex],
+            shortKeys[dayIndex].toUpperCase(),
+            longKeys[dayIndex].toUpperCase(),
+            shortKeys[dayIndex].charAt(0).toUpperCase() + shortKeys[dayIndex].slice(1),
+            longKeys[dayIndex].charAt(0).toUpperCase() + longKeys[dayIndex].slice(1),
+        ];
+
+        let todaySchedule = undefined;
+        for (const k of keyCandidates) {
+            if (workingHours && Object.prototype.hasOwnProperty.call(workingHours, k)) {
+                todaySchedule = workingHours[k];
+                break;
+            }
+        }
 
         if (!todaySchedule || !todaySchedule.isOpen) {
             return {
@@ -329,15 +374,18 @@ const createBooking = async (bookingData) => {
             vehicleId,
             serviceCenterId,
             serviceTypeId,
-            servicePackageId, // Thêm support cho service package
+            servicePackageId, // hỗ trợ gói dịch vụ
             appointmentDate,
             appointmentTime,
             serviceDescription,
             priority = "medium",
+            // new options
+            isInspectionOnly = false,
+            paymentPreference, // 'online' | 'offline' | undefined
         } = bookingData;
 
         // Validate required fields
-        const requiredFields = ["customerId", "vehicleId", "serviceCenterId", "serviceTypeId", "appointmentDate", "appointmentTime"];
+        const requiredFields = ["customerId", "vehicleId", "serviceCenterId", "appointmentDate", "appointmentTime"];
         for (const field of requiredFields) {
             if (!bookingData[field]) {
                 return {
@@ -346,6 +394,15 @@ const createBooking = async (bookingData) => {
                     message: `Thiếu trường bắt buộc: ${field}`,
                 };
             }
+        }
+
+        // Validate selection: must choose either (serviceType or servicePackage) unless inspection-only
+        if (!isInspectionOnly && !serviceTypeId && !servicePackageId) {
+            return {
+                success: false,
+                statusCode: 400,
+                message: "Vui lòng chọn loại dịch vụ hoặc gói dịch vụ, hoặc bật tùy chọn kiểm tra trước",
+            };
         }
 
         // Verify vehicle belongs to customer
@@ -362,20 +419,30 @@ const createBooking = async (bookingData) => {
             };
         }
 
-        // Get service type details
-        const serviceType = await ServiceType.findById(serviceTypeId);
-        if (!serviceType) {
-            return {
-                success: false,
-                statusCode: 404,
-                message: "Không tìm thấy loại dịch vụ",
-            };
+        // Get service type details if provided and not inspection-only
+        let serviceType = null;
+        if (serviceTypeId) {
+            serviceType = await ServiceType.findById(serviceTypeId);
+            if (!serviceType) {
+                return {
+                    success: false,
+                    statusCode: 404,
+                    message: "Không tìm thấy loại dịch vụ",
+                };
+            }
         }
 
         // Check if using service package
         let servicePackage = null;
         let isFromPackage = false;
-        let estimatedCost = serviceType.pricing.basePrice;
+        // estimated cost logic
+        let estimatedCost = 0;
+        if (isInspectionOnly) {
+            // miễn phí ước tính, trung tâm sẽ báo giá sau
+            estimatedCost = 0;
+        } else if (serviceType) {
+            estimatedCost = serviceType.pricing?.basePrice || 0;
+        }
 
         if (servicePackageId) {
             const CustomerPackage = (await import("../models/customerPackage.js")).default;
@@ -397,22 +464,26 @@ const createBooking = async (bookingData) => {
                 };
             }
 
-            // Check if service type is included in package
-            const isServiceIncluded = servicePackage.packageId.includedServices.includes(serviceTypeId);
-            if (!isServiceIncluded) {
-                return {
-                    success: false,
-                    statusCode: 400,
-                    message: "Loại dịch vụ này không có trong gói đã chọn",
-                };
+            isFromPackage = true;
+
+            // If user also selected a concrete service, validate it is in package
+            if (serviceTypeId) {
+                const isServiceIncluded = servicePackage.packageId.includedServices.map(id => id.toString()).includes(serviceTypeId.toString());
+                if (!isServiceIncluded) {
+                    return {
+                        success: false,
+                        statusCode: 400,
+                        message: "Loại dịch vụ này không có trong gói đã chọn",
+                    };
+                }
             }
 
-            isFromPackage = true;
-            estimatedCost = 0; // Free when using package
+            // Using package so customer won't be charged additionally at booking time
+            estimatedCost = 0;
         }
 
         // Calculate end time
-        const duration = serviceType.serviceDetails.duration;
+        const duration = serviceType?.serviceDetails?.duration || 60; // default 60' for inspection or when unspecified
         const [startHour, startMin] = appointmentTime.split(":").map(Number);
         const endMinutes = startHour * 60 + startMin + duration;
         const endHour = Math.floor(endMinutes / 60);
@@ -424,7 +495,7 @@ const createBooking = async (bookingData) => {
             customer: customerId,
             vehicle: vehicleId,
             serviceCenter: serviceCenterId,
-            serviceType: serviceTypeId,
+            serviceType: serviceTypeId || undefined,
             appointmentTime: {
                 date: new Date(appointmentDate),
                 startTime: appointmentTime,
@@ -437,6 +508,7 @@ const createBooking = async (bookingData) => {
                 estimatedCost: estimatedCost,
                 isFromPackage: isFromPackage,
                 servicePackageId: servicePackageId,
+                isInspectionOnly: Boolean(isInspectionOnly),
             },
             status: "pending_confirmation",
         });
@@ -467,10 +539,21 @@ const createBooking = async (bookingData) => {
 
         // Check if payment is required
         const requiresPayment = appointment.serviceDetails.estimatedCost > 0;
+        // set payment method according to preference
+        if (requiresPayment) {
+            if (paymentPreference === 'online') {
+                appointment.payment.method = 'ewallet';
+            } else if (paymentPreference === 'offline') {
+                appointment.payment.method = 'cash';
+            }
+        } else {
+            appointment.payment.method = 'not_required';
+        }
+        await appointment.save();
         let paymentInfo = null;
 
         // Only create payment if PayOS is properly configured
-        if (requiresPayment && process.env.PAYOS_CLIENT_ID && process.env.PAYOS_API_KEY && process.env.PAYOS_CHECKSUM_KEY) {
+        if (requiresPayment && paymentPreference === 'online' && process.env.PAYOS_CLIENT_ID && process.env.PAYOS_API_KEY && process.env.PAYOS_CHECKSUM_KEY) {
             // Create payment link
             try {
                 const paymentResult = await payosService.createBookingPayment(appointment._id, customerId);
@@ -481,7 +564,7 @@ const createBooking = async (bookingData) => {
                 console.error("Create payment error:", paymentError);
                 // Don't fail the booking if payment creation fails
             }
-        } else if (requiresPayment) {
+        } else if (requiresPayment && paymentPreference === 'online') {
             console.log("PayOS not configured, skipping payment creation");
         }
 
@@ -710,6 +793,43 @@ const rescheduleBooking = async (bookingId, customerId, rescheduleData) => {
     }
 };
 
+// Lấy chi tiết booking
+const getBookingDetails = async (bookingId, customerId) => {
+    try {
+        const appointment = await Appointment.findOne({
+            _id: bookingId,
+            customer: customerId,
+        })
+            .populate({ path: "customer", select: "username fullName email phone" })
+            .populate({ path: "vehicle", select: "vehicleInfo", populate: { path: "vehicleInfo.vehicleModel", select: "brand modelName batteryType" } })
+            .populate({ path: "serviceCenter", select: "name address contact operatingHours" })
+            .populate({ path: "serviceType", select: "name category pricing serviceDetails" })
+            .populate({ path: "technician", select: "fullName email phone" });
+
+        if (!appointment) {
+            return {
+                success: false,
+                statusCode: 404,
+                message: "Không tìm thấy booking",
+            };
+        }
+
+        return {
+            success: true,
+            statusCode: 200,
+            message: "Lấy chi tiết booking thành công",
+            data: appointment,
+        };
+    } catch (error) {
+        console.error("Get booking details error:", error);
+        return {
+            success: false,
+            statusCode: 500,
+            message: "Lỗi khi lấy chi tiết booking",
+        };
+    }
+};
+
 export default {
     getCustomerVehicles,
     addCustomerVehicle,
@@ -720,4 +840,5 @@ export default {
     getCustomerBookings,
     cancelBooking,
     rescheduleBooking,
+    getBookingDetails,
 };
