@@ -204,10 +204,14 @@ const workProgressTrackingService = {
         "paused",
         "completed",
         "delayed",
+        "inspection_completed",
+        "quote_provided",
+        "quote_approved",
+        "quote_rejected",
       ];
       if (!validStatuses.includes(status)) {
         throw new Error(
-          "Invalid status. Must be one of: not_started, in_progress, paused, completed, delayed"
+          "Invalid status. Must be one of: not_started, in_progress, paused, completed, delayed, inspection_completed, quote_provided, quote_approved, quote_rejected"
         );
       }
 
@@ -249,6 +253,352 @@ const workProgressTrackingService = {
       return updatedRecord;
     } catch (error) {
       throw new Error(`Error updating progress status: ${error.message}`);
+    }
+  },
+
+  // Submit inspection results and quote
+  submitInspectionAndQuote: async (id, inspectionData) => {
+    try {
+      if (!mongoose.Types.ObjectId.isValid(id)) {
+        throw new Error("Invalid progress record ID");
+      }
+
+      const progressRecord = await WorkProgressTracking.findById(id);
+      if (!progressRecord) {
+        throw new Error("Progress record not found");
+      }
+
+      // Validate required fields
+      if (
+        !inspectionData.vehicleCondition ||
+        !inspectionData.diagnosisDetails
+      ) {
+        throw new Error("Vehicle condition and diagnosis details are required");
+      }
+
+      if (
+        inspectionData.quoteAmount !== undefined &&
+        inspectionData.quoteAmount < 0
+      ) {
+        throw new Error("Quote amount cannot be negative");
+      }
+
+      // Update inspection data
+      const updateData = {
+        currentStatus: "inspection_completed",
+        "inspection.vehicleCondition": inspectionData.vehicleCondition,
+        "inspection.diagnosisDetails": inspectionData.diagnosisDetails,
+        "inspection.inspectionNotes": inspectionData.inspectionNotes || "",
+        "inspection.inspectionCompletedAt": new Date(),
+        "inspection.isInspectionOnly": true,
+      };
+
+      // If quote is provided, update quote data
+      if (
+        inspectionData.quoteAmount !== undefined &&
+        inspectionData.quoteDetails
+      ) {
+        updateData.currentStatus = "quote_provided";
+        updateData["quote.quoteAmount"] = inspectionData.quoteAmount;
+        updateData["quote.quoteDetails"] = inspectionData.quoteDetails;
+        updateData["quote.quotedAt"] = new Date();
+        updateData["quote.quoteStatus"] = "pending";
+      }
+
+      // Update the appointment status
+      const appointment = await Appointment.findById(
+        progressRecord.appointmentId
+      );
+      if (appointment) {
+        if (updateData.currentStatus === "quote_provided") {
+          appointment.status = "quote_provided";
+          appointment.inspectionAndQuote = {
+            inspectionNotes: inspectionData.inspectionNotes || "",
+            inspectionCompletedAt: new Date(),
+            vehicleCondition: inspectionData.vehicleCondition,
+            diagnosisDetails: inspectionData.diagnosisDetails,
+            quoteAmount: inspectionData.quoteAmount,
+            quoteDetails: inspectionData.quoteDetails,
+            quotedAt: new Date(),
+            quoteStatus: "pending",
+          };
+        } else {
+          appointment.status = "inspection_completed";
+          appointment.inspectionAndQuote = {
+            inspectionNotes: inspectionData.inspectionNotes || "",
+            inspectionCompletedAt: new Date(),
+            vehicleCondition: inspectionData.vehicleCondition,
+            diagnosisDetails: inspectionData.diagnosisDetails,
+          };
+        }
+        await appointment.save();
+      }
+
+      const updatedRecord = await WorkProgressTracking.findByIdAndUpdate(
+        id,
+        { $set: updateData },
+        { new: true, runValidators: true }
+      )
+        .populate("technicianId", "firstName lastName email phoneNumber")
+        .populate("appointmentId")
+        .populate("serviceRecordId");
+
+      return updatedRecord;
+    } catch (error) {
+      throw new Error(
+        `Error submitting inspection and quote: ${error.message}`
+      );
+    }
+  },
+
+  // Process customer response to quote (approve/reject)
+  processQuoteResponse: async (id, response) => {
+    try {
+      if (!mongoose.Types.ObjectId.isValid(id)) {
+        throw new Error("Invalid progress record ID");
+      }
+
+      const progressRecord = await WorkProgressTracking.findById(id);
+      if (!progressRecord) {
+        throw new Error("Progress record not found");
+      }
+
+      // Validate that there is a quote to respond to
+      if (progressRecord.currentStatus !== "quote_provided") {
+        throw new Error("No quote has been provided yet for this record");
+      }
+
+      // Validate response
+      if (!["approved", "rejected"].includes(response.status)) {
+        throw new Error(
+          "Response status must be either 'approved' or 'rejected'"
+        );
+      }
+
+      // Update quote status
+      const updateData = {
+        "quote.quoteStatus": response.status,
+        "quote.customerResponseAt": new Date(),
+        currentStatus:
+          response.status === "approved" ? "quote_approved" : "quote_rejected",
+      };
+
+      // If notes are provided, add them
+      if (response.notes) {
+        updateData["quote.customerResponseNotes"] = response.notes;
+      }
+
+      // Update the appointment status
+      const appointment = await Appointment.findById(
+        progressRecord.appointmentId
+      );
+      if (appointment) {
+        if (response.status === "approved") {
+          appointment.status = "quote_approved";
+          appointment.inspectionAndQuote.quoteStatus = "approved";
+          appointment.inspectionAndQuote.customerResponseAt = new Date();
+          appointment.inspectionAndQuote.customerResponseNotes =
+            response.notes || "";
+        } else {
+          appointment.status = "quote_rejected";
+          appointment.inspectionAndQuote.quoteStatus = "rejected";
+          appointment.inspectionAndQuote.customerResponseAt = new Date();
+          appointment.inspectionAndQuote.customerResponseNotes =
+            response.notes || "";
+        }
+        await appointment.save();
+      }
+
+      const updatedRecord = await WorkProgressTracking.findByIdAndUpdate(
+        id,
+        { $set: updateData },
+        { new: true, runValidators: true }
+      )
+        .populate("technicianId", "firstName lastName email phoneNumber")
+        .populate("appointmentId")
+        .populate("serviceRecordId");
+
+      return updatedRecord;
+    } catch (error) {
+      throw new Error(`Error processing quote response: ${error.message}`);
+    }
+  },
+
+  // Start maintenance after quote approval
+  startMaintenance: async (id) => {
+    try {
+      if (!mongoose.Types.ObjectId.isValid(id)) {
+        throw new Error("Invalid progress record ID");
+      }
+
+      const progressRecord = await WorkProgressTracking.findById(id);
+      if (!progressRecord) {
+        throw new Error("Progress record not found");
+      }
+
+      // Validate that quote has been approved
+      if (progressRecord.currentStatus !== "quote_approved") {
+        throw new Error(
+          "Cannot start maintenance: quote has not been approved"
+        );
+      }
+
+      // Update status to maintenance in progress
+      const updateData = {
+        currentStatus: "in_progress",
+        progressPercentage: 25, // Reset progress percentage for maintenance phase
+      };
+
+      // Update the appointment status
+      const appointment = await Appointment.findById(
+        progressRecord.appointmentId
+      );
+      if (appointment) {
+        appointment.status = "maintenance_in_progress";
+        await appointment.save();
+      }
+
+      const updatedRecord = await WorkProgressTracking.findByIdAndUpdate(
+        id,
+        { $set: updateData },
+        { new: true, runValidators: true }
+      )
+        .populate("technicianId", "firstName lastName email phoneNumber")
+        .populate("appointmentId")
+        .populate("serviceRecordId");
+
+      return updatedRecord;
+    } catch (error) {
+      throw new Error(`Error starting maintenance: ${error.message}`);
+    }
+  },
+
+  // Complete maintenance service
+  completeMaintenance: async (id, maintenanceData) => {
+    try {
+      if (!mongoose.Types.ObjectId.isValid(id)) {
+        throw new Error("Invalid progress record ID");
+      }
+
+      const progressRecord = await WorkProgressTracking.findById(id);
+      if (!progressRecord) {
+        throw new Error("Progress record not found");
+      }
+
+      // Validate that maintenance is in progress
+      if (progressRecord.currentStatus !== "in_progress") {
+        throw new Error(
+          "Cannot complete maintenance: maintenance is not in progress"
+        );
+      }
+
+      // Update status to maintenance completed
+      const updateData = {
+        currentStatus: "completed",
+        progressPercentage: 100,
+        endTime: new Date(),
+        notes: maintenanceData.notes || progressRecord.notes,
+      };
+
+      // Update the appointment status
+      const appointment = await Appointment.findById(
+        progressRecord.appointmentId
+      );
+      if (appointment) {
+        appointment.status = "maintenance_completed";
+        appointment.completion = {
+          isCompleted: true,
+          completedAt: new Date(),
+          completedBy: progressRecord.technicianId,
+          workDone: maintenanceData.workDone || "",
+          recommendations: maintenanceData.recommendations || "",
+        };
+        await appointment.save();
+      }
+
+      const updatedRecord = await WorkProgressTracking.findByIdAndUpdate(
+        id,
+        { $set: updateData },
+        { new: true, runValidators: true }
+      )
+        .populate("technicianId", "firstName lastName email phoneNumber")
+        .populate("appointmentId")
+        .populate("serviceRecordId");
+
+      return updatedRecord;
+    } catch (error) {
+      throw new Error(`Error completing maintenance: ${error.message}`);
+    }
+  },
+
+  // Process cash payment by staff
+  processCashPayment: async (id, paymentData) => {
+    try {
+      if (!mongoose.Types.ObjectId.isValid(id)) {
+        throw new Error("Invalid progress record ID");
+      }
+
+      const progressRecord = await WorkProgressTracking.findById(id);
+      if (!progressRecord) {
+        throw new Error("Progress record not found");
+      }
+
+      // Validate that maintenance is completed
+      if (progressRecord.currentStatus !== "completed") {
+        throw new Error("Cannot process payment: maintenance is not completed");
+      }
+
+      // Validate payment data
+      if (!paymentData.staffId) {
+        throw new Error("Staff ID is required");
+      }
+
+      if (!mongoose.Types.ObjectId.isValid(paymentData.staffId)) {
+        throw new Error("Invalid staff ID");
+      }
+
+      if (!paymentData.paidAmount || paymentData.paidAmount <= 0) {
+        throw new Error("Valid payment amount is required");
+      }
+
+      // Update payment details
+      const updateData = {
+        "paymentDetails.paymentMethod": "cash",
+        "paymentDetails.paymentStatus": "paid",
+        "paymentDetails.paidAmount": paymentData.paidAmount,
+        "paymentDetails.paidAt": new Date(),
+        "paymentDetails.processedBy": paymentData.staffId,
+      };
+
+      // Update the appointment status and payment info
+      const appointment = await Appointment.findById(
+        progressRecord.appointmentId
+      );
+      if (appointment) {
+        appointment.status = "completed";
+        appointment.payment = {
+          method: "cash",
+          status: "paid",
+          amount: paymentData.paidAmount,
+          paidAt: new Date(),
+          notes: paymentData.notes || "",
+        };
+        await appointment.save();
+      }
+
+      const updatedRecord = await WorkProgressTracking.findByIdAndUpdate(
+        id,
+        { $set: updateData },
+        { new: true, runValidators: true }
+      )
+        .populate("technicianId", "firstName lastName email phoneNumber")
+        .populate("appointmentId")
+        .populate("serviceRecordId")
+        .populate("paymentDetails.processedBy", "firstName lastName email");
+
+      return updatedRecord;
+    } catch (error) {
+      throw new Error(`Error processing cash payment: ${error.message}`);
     }
   },
 

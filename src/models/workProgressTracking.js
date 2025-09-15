@@ -29,7 +29,17 @@ const WorkProgressTrackingSchema = new mongoose.Schema(
     },
     currentStatus: {
       type: String,
-      enum: ["not_started", "in_progress", "paused", "completed", "delayed"],
+      enum: [
+        "not_started",
+        "in_progress",
+        "paused",
+        "completed",
+        "delayed",
+        "inspection_completed",
+        "quote_provided",
+        "quote_approved",
+        "quote_rejected",
+      ],
       default: "not_started",
     },
     progressPercentage: {
@@ -89,6 +99,71 @@ const WorkProgressTrackingSchema = new mongoose.Schema(
     },
     supervisorNotes: {
       type: String,
+    },
+    inspection: {
+      isInspectionOnly: {
+        type: Boolean,
+        default: false,
+      },
+      inspectionNotes: {
+        type: String,
+      },
+      inspectionCompletedAt: {
+        type: Date,
+      },
+      vehicleCondition: {
+        type: String,
+      },
+      diagnosisDetails: {
+        type: String,
+      },
+    },
+    quote: {
+      quoteAmount: {
+        type: Number,
+        min: 0,
+      },
+      quoteDetails: {
+        type: String,
+      },
+      quotedAt: {
+        type: Date,
+      },
+      quoteStatus: {
+        type: String,
+        enum: ["pending", "approved", "rejected"],
+        default: "pending",
+      },
+      customerResponseAt: {
+        type: Date,
+      },
+      staffId: {
+        type: mongoose.Schema.Types.ObjectId,
+        ref: "User", // Staff who processed the quote
+      },
+    },
+    paymentDetails: {
+      paymentMethod: {
+        type: String,
+        enum: ["cash", "card", "banking", "ewallet", "not_required"],
+        default: "not_required",
+      },
+      paymentStatus: {
+        type: String,
+        enum: ["pending", "paid", "failed", "refunded"],
+        default: "pending",
+      },
+      paidAmount: {
+        type: Number,
+        default: 0,
+      },
+      paidAt: {
+        type: Date,
+      },
+      processedBy: {
+        type: mongoose.Schema.Types.ObjectId,
+        ref: "User", // Staff who processed the payment
+      },
     },
     createdAt: {
       type: Date,
