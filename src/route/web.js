@@ -13,6 +13,7 @@ import staffAssignmentController from "../controllers/staffAssignmentController.
 import technicianCertificateController from "../controllers/technicianCertificateController.js";
 import technicianScheduleController from "../controllers/technicianScheduleController.js";
 import workProgressTrackingController from "../controllers/workProgressTrackingController.js";
+import costAnalyticsController from "../controllers/costAnalyticsController.js";
 import { protect, authorize } from "../middleware/authMiddleware.js";
 
 // Configure multer for file uploads
@@ -316,6 +317,18 @@ let initWebRoutes = (app) => {
     router.post(
         "/api/payment/sync/:orderCode",
         paymentController.syncPaymentStatus
+    );
+
+    // ===== COST ANALYTICS (CUSTOMER) =====
+    router.get(
+        "/api/costs/history",
+        protect,
+        costAnalyticsController.getPersonalCostHistory
+    );
+    router.get(
+        "/api/costs/summary",
+        protect,
+        costAnalyticsController.getPersonalCostSummary
     );
 
     // ===== SERVICE PACKAGE ROUTES =====
