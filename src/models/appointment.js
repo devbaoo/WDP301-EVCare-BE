@@ -27,7 +27,7 @@ const AppointmentSchema = new mongoose.Schema(
         serviceType: {
             type: mongoose.Schema.Types.ObjectId,
             ref: "ServiceType",
-            required: true,
+            required: false,
         },
 
         // Thông tin kỹ thuật viên
@@ -71,6 +71,11 @@ const AppointmentSchema = new mongoose.Schema(
             estimatedCost: { type: Number }, // Chi phí ước tính
             actualCost: { type: Number }, // Chi phí thực tế
             notes: { type: String }, // Ghi chú thêm
+            // Đặt lịch kiểm tra tổng quát, không chọn dịch vụ cụ thể
+            isInspectionOnly: { type: Boolean, default: false },
+            // Gói dịch vụ nếu có
+            isFromPackage: { type: Boolean, default: false },
+            servicePackageId: { type: mongoose.Schema.Types.ObjectId, ref: "CustomerPackage" },
         },
 
         // Thông tin thanh toán

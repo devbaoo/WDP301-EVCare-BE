@@ -190,11 +190,12 @@ const rescheduleBooking = async (req, res) => {
     try {
         const { bookingId } = req.params;
         const customerId = req.user.id;
-        const { newDate, newTime } = req.body;
+        const newDate = req.body?.newDate ?? req.body?.rescheduleData?.newDate;
+        const newTime = req.body?.newTime ?? req.body?.rescheduleData?.newTime;
 
         const result = await bookingService.rescheduleBooking(bookingId, customerId, {
             newDate,
-            newTime
+            newTime,
         });
 
         return res.status(result.statusCode).json({
@@ -217,12 +218,12 @@ const getBookingDetails = async (req, res) => {
         const { bookingId } = req.params;
         const customerId = req.user.id;
 
-        // This would be implemented in bookingService
-        // For now, return a placeholder response
-        res.status(200).json({
-            success: true,
-            message: "Get booking details - to be implemented",
-            data: { bookingId, customerId },
+        const result = await bookingService.getBookingDetails(bookingId, customerId);
+
+        return res.status(result.statusCode).json({
+            success: result.success,
+            message: result.message,
+            data: result.data,
         });
     } catch (error) {
         console.error("Get booking details error:", error);

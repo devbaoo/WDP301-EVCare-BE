@@ -224,16 +224,30 @@ const getCompatiblePackages = async (vehicleId) => {
             };
         }
 
+        // Ensure vehicle model data is present
+        const vehicleModel = vehicle?.vehicleInfo?.vehicleModel;
+        if (!vehicleModel || typeof vehicleModel !== 'object') {
+            return {
+                success: false,
+                statusCode: 400,
+                message: "Xe chưa có thông tin model hoặc model chưa được populate"
+            };
+        }
+
+        const vehicleBrand = vehicleModel.brand;
+        const vehicleModelName = vehicleModel.modelName;
+
         // Get all active packages
         const packages = await ServicePackage.find({ isActive: true })
             .populate('includedServices', 'name category pricing compatibleVehicles');
 
         // Filter compatible packages
         const compatiblePackages = packages.filter(pkg => {
-            return pkg.includedServices.some(service => {
-                return service.compatibleVehicles.some(vehicle => {
-                    return vehicle.brand === vehicle.vehicleInfo.vehicleModel.brand &&
-                        vehicle.model === vehicle.vehicleInfo.vehicleModel.modelName;
+            return (pkg.includedServices || []).some(service => {
+                const list = service?.compatibleVehicles || [];
+                return list.some(cv => {
+                    // cv: { brand, model } expected
+                    return cv && cv.brand === vehicleBrand && cv.model === vehicleModelName;
                 });
             });
         });

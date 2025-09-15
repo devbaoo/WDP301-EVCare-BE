@@ -246,6 +246,35 @@ const sendBookingConfirmation = async (appointment) => {
     const appointmentDate = new Date(appointment.appointmentTime.date).toLocaleDateString('vi-VN');
     const appointmentTime = appointment.appointmentTime.startTime;
 
+    // Derive display fields
+    const isInspectionOnly = Boolean(appointment?.serviceDetails?.isInspectionOnly);
+    const isFromPackage = Boolean(appointment?.serviceDetails?.isFromPackage);
+    const paymentMethod = appointment?.payment?.method;
+    const paymentStatus = appointment?.payment?.status;
+    const estimatedCost = typeof appointment?.serviceDetails?.estimatedCost === 'number' ? appointment.serviceDetails.estimatedCost : 0;
+
+    const paymentMethodLabel = (() => {
+      if (estimatedCost === 0) return "Không yêu cầu thanh toán";
+      switch (paymentMethod) {
+        case 'ewallet':
+          return "Thanh toán online";
+        case 'cash':
+          return "Thanh toán tại trung tâm";
+        case 'card':
+          return "Thanh toán bằng thẻ";
+        case 'banking':
+          return "Chuyển khoản ngân hàng";
+        default:
+          return "Chưa chọn phương thức";
+      }
+    })();
+
+    const serviceLabel = isInspectionOnly
+      ? "Kiểm tra tổng quát trước (chưa chọn dịch vụ cụ thể)"
+      : (serviceType?.name || "N/A");
+
+    const packageLabel = isFromPackage ? "Có - Sử dụng gói dịch vụ" : "Không";
+
     // Tạo nội dung email
     const emailContent = `
       <div style="font-family: Arial, sans-serif; max-width: 600px; margin: 0 auto;">
@@ -274,7 +303,7 @@ const sendBookingConfirmation = async (appointment) => {
               </tr>
               <tr>
                 <td style="padding: 8px 0; color: #666;">Dịch vụ:</td>
-                <td style="padding: 8px 0; color: #333; font-weight: 500;">${serviceType.name}</td>
+                <td style="padding: 8px 0; color: #333; font-weight: 500;">${serviceLabel}</td>
               </tr>
               <tr>
                 <td style="padding: 8px 0; color: #666;">Trung tâm:</td>
@@ -287,6 +316,14 @@ const sendBookingConfirmation = async (appointment) => {
               <tr>
                 <td style="padding: 8px 0; color: #666;">Giờ:</td>
                 <td style="padding: 8px 0; color: #333; font-weight: 500;">${appointmentTime}</td>
+              </tr>
+              <tr>
+                <td style="padding: 8px 0; color: #666;">Gói dịch vụ:</td>
+                <td style="padding: 8px 0; color: #333; font-weight: 500;">${packageLabel}</td>
+              </tr>
+              <tr>
+                <td style="padding: 8px 0; color: #666;">Phương thức thanh toán:</td>
+                <td style="padding: 8px 0; color: #333; font-weight: 500;">${paymentMethodLabel}</td>
               </tr>
               <tr>
                 <td style="padding: 8px 0; color: #666;">Trạng thái:</td>
@@ -349,10 +386,138 @@ const sendBookingConfirmation = async (appointment) => {
   }
 };
 
+// Gửi email xác nhận dời lịch booking
+const sendRescheduleConfirmation = async (appointment) => {
+  try {
+    const customer = appointment.customer;
+    const vehicle = appointment.vehicle;
+    const serviceCenter = appointment.serviceCenter;
+    const serviceType = appointment.serviceType;
+
+    const appointmentDate = new Date(appointment.appointmentTime.date).toLocaleDateString('vi-VN');
+    const appointmentTime = appointment.appointmentTime.startTime;
+
+    const isInspectionOnly = Boolean(appointment?.serviceDetails?.isInspectionOnly);
+    const isFromPackage = Boolean(appointment?.serviceDetails?.isFromPackage);
+    const paymentMethod = appointment?.payment?.method;
+    const estimatedCost = typeof appointment?.serviceDetails?.estimatedCost === 'number' ? appointment.serviceDetails.estimatedCost : 0;
+    const paymentMethodLabel = (() => {
+      if (estimatedCost === 0) return "Không yêu cầu thanh toán";
+      switch (paymentMethod) {
+        case 'ewallet':
+          return "Thanh toán online";
+        case 'cash':
+          return "Thanh toán tại trung tâm";
+        case 'card':
+          return "Thanh toán bằng thẻ";
+        case 'banking':
+          return "Chuyển khoản ngân hàng";
+        default:
+          return "Chưa chọn phương thức";
+      }
+    })();
+    const serviceLabel = isInspectionOnly
+      ? "Kiểm tra tổng quát trước (chưa chọn dịch vụ cụ thể)"
+      : (serviceType?.name || "N/A");
+    const packageLabel = isFromPackage ? "Có - Sử dụng gói dịch vụ" : "Không";
+
+    const emailContent = `
+      <div style="font-family: Arial, sans-serif; max-width: 600px; margin: 0 auto;">
+        <div style="background: linear-gradient(135deg, #36d1dc 0%, #5b86e5 100%); padding: 30px; text-align: center; color: white;">
+          <h1 style="margin: 0; font-size: 28px;">EVCare</h1>
+          <p style="margin: 10px 0 0 0; font-size: 16px;">Xác nhận dời lịch bảo dưỡng</p>
+        </div>
+        <div style="padding: 30px; background: #f8f9fa;">
+          <h2 style="color: #333; margin-bottom: 20px;">Xin chào ${customer.fullName || customer.username}!</h2>
+          <p style="color: #666; line-height: 1.6; margin-bottom: 20px;">
+            Yêu cầu dời lịch của bạn đã được ghi nhận. Dưới đây là thông tin lịch hẹn mới.
+          </p>
+          <div style="background: white; padding: 20px; border-radius: 8px; margin: 20px 0; box-shadow: 0 2px 4px rgba(0,0,0,0.1);">
+            <h3 style="color: #333; margin-bottom: 15px;">Thông tin lịch hẹn mới</h3>
+            <table style="width: 100%; border-collapse: collapse;">
+              <tr>
+                <td style="padding: 8px 0; color: #666; width: 120px;">Xe:</td>
+                <td style="padding: 8px 0; color: #333; font-weight: 500;">${vehicle.vehicleInfo.vehicleModel.brand} ${vehicle.vehicleInfo.vehicleModel.modelName} ${vehicle.vehicleInfo.year}</td>
+              </tr>
+              <tr>
+                <td style="padding: 8px 0; color: #666;">Dịch vụ:</td>
+                <td style="padding: 8px 0; color: #333; font-weight: 500;">${serviceLabel}</td>
+              </tr>
+              <tr>
+                <td style="padding: 8px 0; color: #666;">Trung tâm:</td>
+                <td style="padding: 8px 0; color: #333; font-weight: 500;">${serviceCenter.name}</td>
+              </tr>
+              <tr>
+                <td style="padding: 8px 0; color: #666;">Ngày mới:</td>
+                <td style="padding: 8px 0; color: #333; font-weight: 500;">${appointmentDate}</td>
+              </tr>
+              <tr>
+                <td style="padding: 8px 0; color: #666;">Giờ mới:</td>
+                <td style="padding: 8px 0; color: #333; font-weight: 500;">${appointmentTime}</td>
+              </tr>
+              <tr>
+                <td style="padding: 8px 0; color: #666;">Gói dịch vụ:</td>
+                <td style="padding: 8px 0; color: #333; font-weight: 500;">${packageLabel}</td>
+              </tr>
+              <tr>
+                <td style="padding: 8px 0; color: #666;">Phương thức thanh toán:</td>
+                <td style="padding: 8px 0; color: #333; font-weight: 500;">${paymentMethodLabel}</td>
+              </tr>
+              <tr>
+                <td style="padding: 8px 0; color: #666;">Trạng thái:</td>
+                <td style="padding: 8px 0; color: #ff9800; font-weight: 500;">Chờ xác nhận</td>
+              </tr>
+            </table>
+          </div>
+          <div style="background: #e3f2fd; padding: 15px; border-radius: 8px; margin: 20px 0;">
+            <p style="margin: 0; color: #1976d2; font-weight: 500;">
+              📞 Liên hệ: ${serviceCenter.contact.phone} | ${serviceCenter.contact.email}
+            </p>
+            <p style="margin: 5px 0 0 0; color: #1976d2;">
+              📍 Địa chỉ: ${serviceCenter.address.street}, ${serviceCenter.address.ward}, ${serviceCenter.address.district}, ${serviceCenter.address.city}
+            </p>
+          </div>
+          <div style="text-align: center; margin: 30px 0;">
+            <a href="${process.env.FRONTEND_URL || 'https://evcare.com'}/my-bookings" 
+               style="background: #36d1dc; color: white; padding: 12px 30px; text-decoration: none; border-radius: 6px; font-weight: 500; display: inline-block;">
+              Xem lịch hẹn
+            </a>
+          </div>
+        </div>
+        <div style="background: #f1f3f4; padding: 20px; text-align: center; color: #666; font-size: 14px;">
+          <p style="margin: 0;">© 2024 EVCare. Tất cả quyền được bảo lưu.</p>
+        </div>
+      </div>
+    `;
+
+    const mailOptions = {
+      from: `"EVCare" <${process.env.EMAIL_USER}>`,
+      to: customer.email,
+      subject: `Xác nhận dời lịch - ${appointmentDate} ${appointmentTime}`,
+      html: emailContent,
+    };
+
+    await sendEmail(mailOptions);
+
+    return {
+      success: true,
+      message: "Email xác nhận dời lịch đã được gửi",
+    };
+  } catch (error) {
+    console.error("Send reschedule confirmation email error:", error);
+    return {
+      success: false,
+      message: "Không thể gửi email xác nhận dời lịch",
+      error: error.message,
+    };
+  }
+};
+
 export default {
   sendVerificationEmail,
   verifyEmail,
   sendResetPasswordEmail,
   resetPassword,
   sendBookingConfirmation,
+  sendRescheduleConfirmation,
 };
