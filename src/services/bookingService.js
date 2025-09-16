@@ -482,22 +482,6 @@ const createBooking = async (bookingData) => {
 
         await appointment.save();
 
-        // Populate appointment data for response
-        await appointment.populate([
-            { path: "customer", select: "username fullName email phone" },
-            { path: "vehicle", select: "vehicleInfo technicalSpecs" },
-            { path: "serviceCenter", select: "name address contact" },
-            { path: "serviceType", select: "name category pricing" },
-        ]);
-
-        // Send confirmation email
-        try {
-            await emailService.sendBookingConfirmation(appointment);
-        } catch (emailError) {
-            console.error("Send booking confirmation email error:", emailError);
-            // Don't fail the booking if email fails
-        }
-
         // Update package usage if using package
         if (isFromPackage && servicePackage) {
             servicePackage.remainingServices = Math.max(0, (servicePackage.remainingServices || 0) - 1);
@@ -514,22 +498,49 @@ const createBooking = async (bookingData) => {
 
         // Check if payment is required
         const requiresPayment = appointment.serviceDetails.estimatedCost > 0;
-        // set payment method according to preference
+        // set payment method/status/amount according to preference
         if (requiresPayment) {
             if (paymentPreference === 'online') {
                 appointment.payment.method = 'ewallet';
+                appointment.payment.status = 'pending';
+                appointment.payment.amount = appointment.serviceDetails.estimatedCost;
             } else if (paymentPreference === 'offline') {
                 appointment.payment.method = 'cash';
+                appointment.payment.status = 'pending';
+                appointment.payment.amount = appointment.serviceDetails.estimatedCost;
+            } else {
+                // default to offline if requires payment but no preference explicitly provided
+                appointment.payment.method = 'cash';
+                appointment.payment.status = 'pending';
+                appointment.payment.amount = appointment.serviceDetails.estimatedCost;
             }
         } else {
             appointment.payment.method = 'not_required';
+            appointment.payment.status = 'pending';
+            appointment.payment.amount = 0;
         }
         await appointment.save();
+
+        // Populate appointment data for response and email (after payment fields are set)
+        await appointment.populate([
+            { path: "customer", select: "username fullName email phone" },
+            { path: "vehicle", select: "vehicleInfo technicalSpecs" },
+            { path: "serviceCenter", select: "name address contact" },
+            { path: "serviceType", select: "name category pricing" },
+        ]);
+
+        // Send confirmation email (now includes correct payment method/status)
+        try {
+            await emailService.sendBookingConfirmation(appointment);
+        } catch (emailError) {
+            console.error("Send booking confirmation email error:", emailError);
+            // Don't fail the booking if email fails
+        }
+
         let paymentInfo = null;
 
-        // Only create payment if PayOS is properly configured
-        if (requiresPayment && paymentPreference === 'online' && process.env.PAYOS_CLIENT_ID && process.env.PAYOS_API_KEY && process.env.PAYOS_CHECKSUM_KEY) {
-            // Create payment link
+        // Always attempt to create payment for online preference. The service will fallback to mock if not configured
+        if (requiresPayment && paymentPreference === 'online') {
             try {
                 const paymentResult = await payosService.createBookingPayment(appointment._id, customerId);
                 if (paymentResult.success) {
@@ -539,8 +550,6 @@ const createBooking = async (bookingData) => {
                 console.error("Create payment error:", paymentError);
                 // Don't fail the booking if payment creation fails
             }
-        } else if (requiresPayment && paymentPreference === 'online') {
-            console.log("PayOS not configured, skipping payment creation");
         }
 
         return {
