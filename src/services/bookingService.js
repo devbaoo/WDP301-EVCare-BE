@@ -112,11 +112,11 @@ const getCompatibleServices = async (vehicleId, serviceCenterId = null) => {
     }
 };
 
-// Lấy lịch trống của trung tâm và kỹ thuật viên
+// Lấy lịch trống của trung tâm và kỹ thuật viên (serviceTypeId có thể không bắt buộc)
 const getAvailableSlots = async (serviceCenterId, serviceTypeId, date) => {
     try {
         const serviceCenter = await ServiceCenter.findById(serviceCenterId);
-        const serviceType = await ServiceType.findById(serviceTypeId);
+        const serviceType = serviceTypeId ? await ServiceType.findById(serviceTypeId) : null;
 
         if (!serviceCenter) {
             return {
@@ -126,13 +126,8 @@ const getAvailableSlots = async (serviceCenterId, serviceTypeId, date) => {
             };
         }
 
-        if (!serviceType) {
-            return {
-                success: false,
-                statusCode: 404,
-                message: "Không tìm thấy loại dịch vụ",
-            };
-        }
+        // Cho phép không truyền serviceTypeId (ví dụ kiểm tra tổng quát trước)
+        // Nếu không có serviceType, dùng thời lượng mặc định
 
         // Get technicians for this service center
         const technicians = serviceCenter.staff.filter(
@@ -164,7 +159,8 @@ const getAvailableSlots = async (serviceCenterId, serviceTypeId, date) => {
 
         // Generate available time slots
         const availableSlots = [];
-        const serviceDuration = serviceType.serviceDetails.duration; // minutes
+        const defaultDuration = 60; // phút
+        const serviceDuration = serviceType?.serviceDetails?.duration || defaultDuration; // minutes
         const workingHours = serviceCenter.operatingHours;
 
         // Validate date
@@ -272,7 +268,7 @@ const getAvailableSlots = async (serviceCenterId, serviceTypeId, date) => {
             data: {
                 date,
                 serviceCenter: serviceCenter.name,
-                serviceType: serviceType.name,
+                serviceType: serviceType?.name || "General Inspection",
                 availableSlots,
                 totalSlots: availableSlots.length,
             },

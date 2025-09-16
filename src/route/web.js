@@ -242,7 +242,7 @@ let initWebRoutes = (app) => {
         bookingController.getCompatibleServices
     );
     router.get(
-        "/api/booking/service-centers/:serviceCenterId/services/:serviceTypeId/slots",
+        "/api/booking/service-centers/:serviceCenterId/slots",
         bookingController.getAvailableSlots
     );
 
