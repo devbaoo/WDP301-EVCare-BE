@@ -14,6 +14,8 @@ import technicianCertificateController from "../controllers/technicianCertificat
 import technicianScheduleController from "../controllers/technicianScheduleController.js";
 import workProgressTrackingController from "../controllers/workProgressTrackingController.js";
 import costAnalyticsController from "../controllers/costAnalyticsController.js";
+import notificationController from "../controllers/notificationController.js";
+import vehicleController from "../controllers/vehicleController.js";
 import { protect, authorize } from "../middleware/authMiddleware.js";
 
 // Configure multer for file uploads
@@ -230,21 +232,6 @@ let initWebRoutes = (app) => {
 
     // ===== BOOKING ROUTES =====
 
-    // Vehicle management (protected - customer only)
-    router.get(
-        "/api/booking/vehicles",
-        protect,
-        bookingController.getCustomerVehicles
-    );
-    router.post(
-        "/api/booking/vehicles",
-        protect,
-        bookingController.addCustomerVehicle
-    );
-
-    // Vehicle models (public - for selection)
-    router.get("/api/booking/vehicle-models", bookingController.getVehicleModels);
-
     // Service discovery (public)
     router.get(
         "/api/booking/service-centers",
@@ -329,6 +316,55 @@ let initWebRoutes = (app) => {
         "/api/costs/summary",
         protect,
         costAnalyticsController.getPersonalCostSummary
+    );
+
+    // ===== NOTIFICATION SETTINGS (CUSTOMER) =====
+    router.get(
+        "/api/notifications/settings",
+        protect,
+        notificationController.getNotificationSettings
+    );
+    router.put(
+        "/api/notifications/settings",
+        protect,
+        notificationController.updateNotificationSettings
+    );
+    router.put(
+        "/api/notifications/email",
+        protect,
+        notificationController.updateEmailNotification
+    );
+    router.post(
+        "/api/notifications/settings/reset",
+        protect,
+        notificationController.resetNotificationSettings
+    );
+
+    // ===== VEHICLE MANAGEMENT (CUSTOMER) =====
+    router.post(
+        "/api/vehicles",
+        protect,
+        vehicleController.addVehicle
+    );
+    router.get(
+        "/api/vehicles",
+        protect,
+        vehicleController.getCustomerVehicles
+    );
+    router.get(
+        "/api/vehicles/:vehicleId",
+        protect,
+        vehicleController.getVehicleDetails
+    );
+    router.put(
+        "/api/vehicles/:vehicleId",
+        protect,
+        vehicleController.updateVehicle
+    );
+    router.delete(
+        "/api/vehicles/:vehicleId",
+        protect,
+        vehicleController.deleteVehicle
     );
 
     // ===== SERVICE PACKAGE ROUTES =====

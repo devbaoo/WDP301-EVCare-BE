@@ -35,6 +35,35 @@ const UserSchema = new mongoose.Schema({
   avatar: {
     type: String
   },
+  notificationSettings: {
+    email: {
+      maintenanceReminders: {
+        type: Boolean,
+        default: true,
+        description: "Nhắc nhở bảo dưỡng định kỳ qua email"
+      },
+      packageRenewalReminders: {
+        type: Boolean,
+        default: true,
+        description: "Nhắc nhở gia hạn gói dịch vụ qua email"
+      },
+      bookingUpdates: {
+        type: Boolean,
+        default: true,
+        description: "Thông báo cập nhật lịch hẹn qua email"
+      },
+      paymentNotifications: {
+        type: Boolean,
+        default: true,
+        description: "Thông báo thanh toán qua email"
+      },
+      generalUpdates: {
+        type: Boolean,
+        default: true,
+        description: "Thông báo chung về dịch vụ qua email"
+      }
+    }
+  },
   createdAt: {
     type: Date,
     default: Date.now

@@ -1,45 +1,6 @@
 import bookingService from "../services/bookingService.js";
 import VehicleModel from "../models/vehicleModel.js";
 
-// Lấy danh sách xe của customer
-const getCustomerVehicles = async (req, res) => {
-    try {
-        const customerId = req.user.id;
-        const result = await bookingService.getCustomerVehicles(customerId);
-
-        return res.status(result.statusCode).json({
-            success: result.success,
-            message: result.message,
-            data: result.data,
-        });
-    } catch (error) {
-        console.error("Get customer vehicles error:", error);
-        res.status(500).json({
-            success: false,
-            message: "Server error",
-        });
-    }
-};
-
-// Thêm xe mới cho customer
-const addCustomerVehicle = async (req, res) => {
-    try {
-        const customerId = req.user.id;
-        const result = await bookingService.addCustomerVehicle(customerId, req.body);
-
-        return res.status(result.statusCode).json({
-            success: result.success,
-            message: result.message,
-            data: result.data,
-        });
-    } catch (error) {
-        console.error("Add customer vehicle error:", error);
-        res.status(500).json({
-            success: false,
-            message: "Server error",
-        });
-    }
-};
 
 // Lấy danh sách trung tâm dịch vụ có sẵn
 const getAvailableServiceCenters = async (req, res) => {
@@ -234,58 +195,8 @@ const getBookingDetails = async (req, res) => {
     }
 };
 
-// Lấy danh sách vehicle models
-const getVehicleModels = async (req, res) => {
-    try {
-        const { brand, search, page = 1, limit = 20 } = req.query;
-
-        let query = {};
-
-        if (brand) {
-            query.brand = new RegExp(brand, "i");
-        }
-
-        if (search) {
-            query.$or = [
-                { brand: new RegExp(search, "i") },
-                { modelName: new RegExp(search, "i") },
-            ];
-        }
-
-        const vehicleModels = await VehicleModel.find(query)
-            .sort({ brand: 1, modelName: 1 })
-            .limit(limit * 1)
-            .skip((page - 1) * limit);
-
-        const total = await VehicleModel.countDocuments(query);
-
-        res.status(200).json({
-            success: true,
-            message: "Lấy danh sách model xe thành công",
-            data: {
-                vehicleModels,
-                pagination: {
-                    currentPage: page,
-                    totalPages: Math.ceil(total / limit),
-                    totalItems: total,
-                    itemsPerPage: limit,
-                },
-            },
-        });
-    } catch (error) {
-        console.error("Get vehicle models error:", error);
-        res.status(500).json({
-            success: false,
-            message: "Server error",
-        });
-    }
-};
-
 
 export default {
-    getCustomerVehicles,
-    addCustomerVehicle,
-    getVehicleModels,
     getAvailableServiceCenters,
     getCompatibleServices,
     getAvailableSlots,

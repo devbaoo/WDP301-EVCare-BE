@@ -513,6 +513,75 @@ const sendRescheduleConfirmation = async (appointment) => {
   }
 };
 
+// Nhắc bảo dưỡng định kỳ
+const sendMaintenanceReminder = async ({ vehicle, owner, vehicleModel, reason }) => {
+  const title = "Nhắc nhở bảo dưỡng định kỳ";
+  const subtitle = `${vehicleModel.brand} ${vehicleModel.modelName} - Biển số ${vehicle.vehicleInfo.licensePlate}`;
+  const reasons = [];
+  if (reason?.kmDue) {
+    reasons.push(`Sắp đến mốc km bảo dưỡng (hiện tại ${reason.currentMileage || 0} km, mốc kế tiếp ${reason.nextServiceMileage || "N/A"} km)`);
+  }
+  if (reason?.timeDue) {
+    reasons.push("Đã đến/ gần đến mốc thời gian bảo dưỡng theo tháng");
+  }
+
+  const html = `
+    <div style="font-family: Arial, sans-serif; max-width: 600px; margin: 0 auto;">
+      <div style="background: #0d9488; padding: 24px; color: #fff; text-align: center; border-radius: 8px 8px 0 0;">
+        <h2 style="margin: 0;">${title}</h2>
+        <p style="margin: 8px 0 0 0;">${subtitle}</p>
+      </div>
+      <div style="padding: 20px; background: #f8f9fa;">
+        <p>Xin chào ${owner.fullName || owner.username},</p>
+        <p>Hệ thống EVCare phát hiện xe của bạn ${reasons.join("; ")}. Vui lòng đặt lịch để đảm bảo tình trạng vận hành tối ưu.</p>
+        <div style="margin: 16px 0;">
+          <a href="${process.env.FRONTEND_URL || "https://evcare.com"}/booking" style="background:#0d9488;color:#fff;padding:10px 16px;border-radius:6px;text-decoration:none;">Đặt lịch ngay</a>
+        </div>
+      </div>
+      <div style="background:#f1f3f4;padding:12px;text-align:center;color:#666;border-radius:0 0 8px 8px;">© EVCare</div>
+    </div>
+  `;
+
+  await sendEmail({
+    from: `"EVCare" <${process.env.EMAIL_USER}>`,
+    to: owner.email,
+    subject: "EVCare - Nhắc nhở bảo dưỡng định kỳ",
+    html,
+  });
+  return { success: true };
+};
+
+// Nhắc gia hạn gói dịch vụ
+const sendPackageRenewalReminder = async ({ subscription, daysLeft }) => {
+  const customer = subscription.customerId;
+  const vehicle = subscription.vehicleId;
+  const pkg = subscription.packageId;
+  const html = `
+    <div style="font-family: Arial, sans-serif; max-width: 600px; margin: 0 auto;">
+      <div style="background: #7c3aed; padding: 24px; color: #fff; text-align: center; border-radius: 8px 8px 0 0;">
+        <h2 style="margin: 0;">Nhắc gia hạn gói dịch vụ</h2>
+        <p style="margin: 8px 0 0 0;">${pkg.packageName} - Xe ${vehicle.vehicleInfo.vehicleModel.brand} ${vehicle.vehicleInfo.vehicleModel.modelName}</p>
+      </div>
+      <div style="padding: 20px; background: #f8f9fa;">
+        <p>Xin chào ${customer.fullName || customer.username},</p>
+        <p>Gói dịch vụ của bạn sẽ hết hạn trong ${daysLeft} ngày hoặc đã hết lượt sử dụng. Vui lòng gia hạn để tiếp tục được ưu đãi và nhắc nhở bảo dưỡng định kỳ.</p>
+        <div style="margin: 16px 0;">
+          <a href="${process.env.FRONTEND_URL || "https://evcare.com"}/subscriptions" style="background:#7c3aed;color:#fff;padding:10px 16px;border-radius:6px;text-decoration:none;">Gia hạn ngay</a>
+        </div>
+      </div>
+      <div style="background:#f1f3f4;padding:12px;text-align:center;color:#666;border-radius:0 0 8px 8px;">© EVCare</div>
+    </div>
+  `;
+
+  await sendEmail({
+    from: `"EVCare" <${process.env.EMAIL_USER}>`,
+    to: customer.email,
+    subject: "EVCare - Nhắc gia hạn gói dịch vụ",
+    html,
+  });
+  return { success: true };
+};
+
 export default {
   sendVerificationEmail,
   verifyEmail,
@@ -520,4 +589,6 @@ export default {
   resetPassword,
   sendBookingConfirmation,
   sendRescheduleConfirmation,
+  sendMaintenanceReminder,
+  sendPackageRenewalReminder,
 };

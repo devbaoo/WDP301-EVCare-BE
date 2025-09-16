@@ -6,88 +6,9 @@ import User from "../models/user.js";
 import emailService from "./emailService.js";
 import payosService from "./payosService.js";
 
-// Lấy danh sách xe của customer
-const getCustomerVehicles = async (customerId) => {
-    try {
-        const vehicles = await Vehicle.find({
-            owner: customerId,
-            status: "active"
-        })
-            .populate("vehicleInfo.vehicleModel", "brand modelName batteryType batteryCapacity motorPower maintenanceIntervals")
-            .sort({ createdAt: -1 });
 
-        return {
-            success: true,
-            statusCode: 200,
-            message: "Lấy danh sách xe thành công",
-            data: vehicles,
-        };
-    } catch (error) {
-        console.error("Get customer vehicles error:", error);
-        return {
-            success: false,
-            statusCode: 500,
-            message: "Lỗi khi lấy danh sách xe",
-        };
-    }
-};
 
-// Thêm xe mới cho customer
-const addCustomerVehicle = async (customerId, vehicleData) => {
-    try {
-        // Validate required fields
-        const requiredFields = ["vehicleInfo"];
-        for (const field of requiredFields) {
-            if (!vehicleData[field]) {
-                return {
-                    success: false,
-                    statusCode: 400,
-                    message: `Thiếu trường bắt buộc: ${field}`,
-                };
-            }
-        }
 
-        // Validate vehicleInfo has vehicleModel
-        if (!vehicleData.vehicleInfo.vehicleModel) {
-            return {
-                success: false,
-                statusCode: 400,
-                message: "Thiếu thông tin model xe (vehicleModel)",
-            };
-        }
-
-        // Check if license plate already exists
-        const existingVehicle = await Vehicle.findOne({
-            "vehicleInfo.licensePlate": vehicleData.vehicleInfo.licensePlate,
-        });
-
-        if (existingVehicle) {
-            return {
-                success: false,
-                statusCode: 400,
-                message: "Biển số xe đã tồn tại trong hệ thống",
-            };
-        }
-
-        vehicleData.owner = customerId;
-        const vehicle = new Vehicle(vehicleData);
-        await vehicle.save();
-
-        return {
-            success: true,
-            statusCode: 201,
-            message: "Thêm xe thành công",
-            data: vehicle,
-        };
-    } catch (error) {
-        console.error("Add customer vehicle error:", error);
-        return {
-            success: false,
-            statusCode: 500,
-            message: "Lỗi khi thêm xe",
-        };
-    }
-};
 
 // Lấy danh sách trung tâm dịch vụ có sẵn
 const getAvailableServiceCenters = async (filters = {}) => {
@@ -448,19 +369,63 @@ const createBooking = async (bookingData) => {
             const CustomerPackage = (await import("../models/customerPackage.js")).default;
             const ServicePackage = (await import("../models/servicePackage.js")).default;
 
+            // Try to interpret provided id as existing CustomerPackage first
             servicePackage = await CustomerPackage.findOne({
                 _id: servicePackageId,
                 customerId,
                 vehicleId,
-                status: 'active',
-                remainingServices: { $gt: 0 }
             }).populate('packageId');
 
+            let packageCatalog = null;
             if (!servicePackage) {
+                // Not an existing customer package, treat as catalog ServicePackage id chosen at booking
+                packageCatalog = await ServicePackage.findById(servicePackageId);
+                if (!packageCatalog || !packageCatalog.isActive) {
+                    return {
+                        success: false,
+                        statusCode: 400,
+                        message: "Gói dịch vụ không hợp lệ hoặc đã ngừng bán",
+                    };
+                }
+
+                // Create a new customer package for this booking context
+                const now = new Date();
+                const end = new Date(now);
+                end.setMonth(end.getMonth() + (packageCatalog.durationMonths || 1));
+
+                const totalQuota = (packageCatalog.maxServicesPerMonth || 1) * (packageCatalog.durationMonths || 1);
+
+                servicePackage = await CustomerPackage.create({
+                    customerId,
+                    vehicleId,
+                    packageId: packageCatalog._id,
+                    startDate: now,
+                    endDate: end,
+                    remainingServices: totalQuota,
+                    totalUsed: 0,
+                    status: 'active',
+                    paymentStatus: 'pending',
+                    autoRenewal: false,
+                });
+
+                // Populate for later checks
+                servicePackage = await CustomerPackage.findById(servicePackage._id).populate('packageId');
+            }
+
+            // At this point, servicePackage is a CustomerPackage doc with populated packageId
+            if (!servicePackage || servicePackage.status !== 'active') {
                 return {
                     success: false,
                     statusCode: 400,
-                    message: "Gói dịch vụ không hợp lệ hoặc đã hết lượt sử dụng",
+                    message: "Gói dịch vụ của khách hàng không khả dụng",
+                };
+            }
+
+            if (servicePackage.remainingServices <= 0) {
+                return {
+                    success: false,
+                    statusCode: 400,
+                    message: "Gói dịch vụ đã hết lượt sử dụng",
                 };
             }
 
@@ -468,7 +433,9 @@ const createBooking = async (bookingData) => {
 
             // If user also selected a concrete service, validate it is in package
             if (serviceTypeId) {
-                const isServiceIncluded = servicePackage.packageId.includedServices.map(id => id.toString()).includes(serviceTypeId.toString());
+                const isServiceIncluded = (servicePackage.packageId?.includedServices || [])
+                    .map(id => id.toString())
+                    .includes(serviceTypeId.toString());
                 if (!isServiceIncluded) {
                     return {
                         success: false,
@@ -531,9 +498,17 @@ const createBooking = async (bookingData) => {
             // Don't fail the booking if email fails
         }
 
-        // Update remaining services if using package
+        // Update package usage if using package
         if (isFromPackage && servicePackage) {
-            servicePackage.remainingServices -= 1;
+            servicePackage.remainingServices = Math.max(0, (servicePackage.remainingServices || 0) - 1);
+            servicePackage.totalUsed = (servicePackage.totalUsed || 0) + 1;
+            servicePackage.lastUsedAt = new Date();
+            servicePackage.usageHistory = servicePackage.usageHistory || [];
+            servicePackage.usageHistory.push({
+                appointmentId: appointment._id,
+                serviceTypeId: serviceTypeId || undefined,
+                notes: serviceTypeId ? `Sử dụng gói cho dịch vụ ${serviceType?.name || ''}` : 'Sử dụng gói khi kiểm tra tổng quát',
+            });
             await servicePackage.save();
         }
 
@@ -831,8 +806,6 @@ const getBookingDetails = async (bookingId, customerId) => {
 };
 
 export default {
-    getCustomerVehicles,
-    addCustomerVehicle,
     getAvailableServiceCenters,
     getCompatibleServices,
     getAvailableSlots,
