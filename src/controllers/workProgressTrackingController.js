@@ -281,6 +281,192 @@ const workProgressTrackingController = {
     }
   },
 
+  // Submit inspection results and quote
+  submitInspectionAndQuote: async (req, res) => {
+    try {
+      const { id } = req.params;
+      const {
+        vehicleCondition,
+        diagnosisDetails,
+        inspectionNotes,
+        quoteAmount,
+        quoteDetails,
+      } = req.body;
+
+      // Validate required fields
+      if (!vehicleCondition || !diagnosisDetails) {
+        return res.status(400).json({
+          success: false,
+          message: "Vehicle condition and diagnosis details are required",
+        });
+      }
+
+      // If quote is provided, validate quote details
+      if (quoteAmount !== undefined && !quoteDetails) {
+        return res.status(400).json({
+          success: false,
+          message: "Quote details are required when providing a quote amount",
+        });
+      }
+
+      const updatedRecord =
+        await workProgressTrackingService.submitInspectionAndQuote(id, {
+          vehicleCondition,
+          diagnosisDetails,
+          inspectionNotes,
+          quoteAmount,
+          quoteDetails,
+        });
+
+      res.status(200).json({
+        success: true,
+        data: updatedRecord,
+        message:
+          quoteAmount !== undefined
+            ? "Inspection completed and quote provided successfully"
+            : "Inspection completed successfully",
+      });
+    } catch (error) {
+      res.status(500).json({
+        success: false,
+        message: error.message || "Failed to submit inspection and quote",
+      });
+    }
+  },
+
+  // Process customer response to quote (approve/reject)
+  processQuoteResponse: async (req, res) => {
+    try {
+      const { id } = req.params;
+      const { status, notes } = req.body;
+
+      // Validate required fields
+      if (!status) {
+        return res.status(400).json({
+          success: false,
+          message: "Response status is required",
+        });
+      }
+
+      // Validate status value
+      if (!["approved", "rejected"].includes(status)) {
+        return res.status(400).json({
+          success: false,
+          message: "Status must be either 'approved' or 'rejected'",
+        });
+      }
+
+      const updatedRecord =
+        await workProgressTrackingService.processQuoteResponse(id, {
+          status,
+          notes,
+        });
+
+      res.status(200).json({
+        success: true,
+        data: updatedRecord,
+        message:
+          status === "approved"
+            ? "Quote approved successfully"
+            : "Quote rejected successfully",
+      });
+    } catch (error) {
+      res.status(500).json({
+        success: false,
+        message: error.message || "Failed to process quote response",
+      });
+    }
+  },
+
+  // Start maintenance after quote approval
+  startMaintenance: async (req, res) => {
+    try {
+      const { id } = req.params;
+
+      const updatedRecord = await workProgressTrackingService.startMaintenance(
+        id
+      );
+
+      res.status(200).json({
+        success: true,
+        data: updatedRecord,
+        message: "Maintenance started successfully",
+      });
+    } catch (error) {
+      res.status(500).json({
+        success: false,
+        message: error.message || "Failed to start maintenance",
+      });
+    }
+  },
+
+  // Complete maintenance service
+  completeMaintenance: async (req, res) => {
+    try {
+      const { id } = req.params;
+      const { notes, workDone, recommendations } = req.body;
+
+      const updatedRecord =
+        await workProgressTrackingService.completeMaintenance(id, {
+          notes,
+          workDone,
+          recommendations,
+        });
+
+      res.status(200).json({
+        success: true,
+        data: updatedRecord,
+        message: "Maintenance completed successfully",
+      });
+    } catch (error) {
+      res.status(500).json({
+        success: false,
+        message: error.message || "Failed to complete maintenance",
+      });
+    }
+  },
+
+  // Process cash payment by staff
+  processCashPayment: async (req, res) => {
+    try {
+      const { id } = req.params;
+      const { staffId, paidAmount, notes } = req.body;
+
+      // Validate required fields
+      if (!staffId) {
+        return res.status(400).json({
+          success: false,
+          message: "Staff ID is required",
+        });
+      }
+
+      if (!paidAmount || paidAmount <= 0) {
+        return res.status(400).json({
+          success: false,
+          message: "Valid payment amount is required",
+        });
+      }
+
+      const updatedRecord =
+        await workProgressTrackingService.processCashPayment(id, {
+          staffId,
+          paidAmount,
+          notes,
+        });
+
+      res.status(200).json({
+        success: true,
+        data: updatedRecord,
+        message: "Cash payment processed successfully",
+      });
+    } catch (error) {
+      res.status(500).json({
+        success: false,
+        message: error.message || "Failed to process cash payment",
+      });
+    }
+  },
+
   // Add milestone
   addMilestone: async (req, res) => {
     try {
