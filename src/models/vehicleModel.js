@@ -1,4 +1,4 @@
-const mongoose = require('mongoose');
+import mongoose from 'mongoose';
 
 const VehicleModelSchema = new mongoose.Schema({
     brand: {
@@ -42,4 +42,6 @@ const VehicleModelSchema = new mongoose.Schema({
     timestamps: { createdAt: 'createdAt', updatedAt: 'updatedAt' }
 });
 
-module.exports = mongoose.model('VehicleModel', VehicleModelSchema);
+const VehicleModel = mongoose.model('VehicleModel', VehicleModelSchema);
+
+export default VehicleModel;

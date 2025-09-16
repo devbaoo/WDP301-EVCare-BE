@@ -29,6 +29,20 @@ const CustomerPackageSchema = new mongoose.Schema({
         required: true,
         min: 0
     },
+    totalUsed: {
+        type: Number,
+        default: 0,
+        min: 0
+    },
+    lastUsedAt: {
+        type: Date
+    },
+    usageHistory: [{
+        appointmentId: { type: mongoose.Schema.Types.ObjectId, ref: 'Appointment' },
+        serviceTypeId: { type: mongoose.Schema.Types.ObjectId, ref: 'ServiceType' },
+        usedAt: { type: Date, default: Date.now },
+        notes: { type: String }
+    }],
     autoRenewal: {
         type: Boolean,
         default: false

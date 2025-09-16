@@ -5,7 +5,7 @@ import dotenv from "dotenv";
 import connectDB from "./config/conectDB.js";
 import viewEngine from "./config/viewEngine.js";
 import initWebRoutes from "./route/web.js";
-// import Scheduler from "./config/scheduler.js";
+import cronService from "./services/cronService.js";
 
 dotenv.config();
 
@@ -25,11 +25,14 @@ initWebRoutes(app);
 
 connectDB();
 
-// Khởi động scheduler cho automated notifications
-// Scheduler.start();
+// Khởi động cron service cho automated notifications
+cronService.start();
 
 const port = process.env.PORT || 8080;
 app.listen(port, () => {
     console.log(`🚀 Backend Nodejs is running on port: ${port}`);
-    console.log(`📅 Automated notification scheduler is active`);
+    console.log(`📅 Automated reminder system is active`);
+    console.log(`⏰ Maintenance reminders: Daily at 9:00 AM`);
+    console.log(`⏰ Package renewal reminders: Daily at 10:00 AM`);
+    console.log(`⏰ Weekly maintenance check: Sundays at 8:00 AM`);
 });
