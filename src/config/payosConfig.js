@@ -11,7 +11,7 @@ const payosConfig = {
 
     // Optional configuration
     baseUrl: process.env.PAYOS_BASE_URL || "https://api-merchant.payos.vn",
-    frontendUrl: process.env.FRONTEND_URL || "http://localhost:3000",
+    frontendUrl: process.env.FRONTEND_URL || "http://localhost:8080",
 
     // Payment settings
     paymentTimeout: 15 * 60 * 1000, // 15 minutes
@@ -21,8 +21,8 @@ const payosConfig = {
     webhookUrl: process.env.PAYOS_WEBHOOK_URL || `${process.env.BACKEND_URL || "http://localhost:8080"}/api/payment/webhook`,
 
     // Return URLs
-    returnUrl: `${process.env.FRONTEND_URL || "http://localhost:3000"}/payment/success`,
-    cancelUrl: `${process.env.FRONTEND_URL || "http://localhost:3000"}/payment/cancel`,
+    returnUrl: `${process.env.FRONTEND_URL || "http://localhost:8080"}/payment/success`,
+    cancelUrl: `${process.env.FRONTEND_URL || "http://localhost:8080"}/payment/cancel`,
 };
 
 // Validate required configuration

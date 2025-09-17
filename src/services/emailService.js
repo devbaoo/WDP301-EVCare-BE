@@ -273,6 +273,13 @@ const sendBookingConfirmation = async (appointment) => {
       ? "Kiểm tra tổng quát trước (chưa chọn dịch vụ cụ thể)"
       : (serviceType?.name || "N/A");
 
+    // Safe vehicle model info (avoid crash when not populated)
+    const vm = vehicle?.vehicleInfo?.vehicleModel;
+    const vehicleModelBrand = (vm && typeof vm === 'object' && 'brand' in vm) ? (vm.brand || "") : "";
+    const vehicleModelName = (vm && typeof vm === 'object' && 'modelName' in vm) ? (vm.modelName || "") : "";
+    const vehicleYear = vehicle?.vehicleInfo?.year || "";
+    const vehicleLicensePlate = vehicle?.vehicleInfo?.licensePlate || "";
+
     const packageLabel = isFromPackage ? "Có - Sử dụng gói dịch vụ" : "Không";
 
     // Tạo nội dung email
@@ -295,11 +302,11 @@ const sendBookingConfirmation = async (appointment) => {
             <table style="width: 100%; border-collapse: collapse;">
               <tr>
                 <td style="padding: 8px 0; color: #666; width: 120px;">Xe:</td>
-                <td style="padding: 8px 0; color: #333; font-weight: 500;">${vehicle.vehicleInfo.vehicleModel.brand} ${vehicle.vehicleInfo.vehicleModel.modelName} ${vehicle.vehicleInfo.year}</td>
+                <td style="padding: 8px 0; color: #333; font-weight: 500;">${vehicleModelBrand} ${vehicleModelName} ${vehicleYear}</td>
               </tr>
               <tr>
                 <td style="padding: 8px 0; color: #666;">Biển số:</td>
-                <td style="padding: 8px 0; color: #333; font-weight: 500;">${vehicle.vehicleInfo.licensePlate}</td>
+                <td style="padding: 8px 0; color: #333; font-weight: 500;">${vehicleLicensePlate}</td>
               </tr>
               <tr>
                 <td style="padding: 8px 0; color: #666;">Dịch vụ:</td>
@@ -582,6 +589,44 @@ const sendPackageRenewalReminder = async ({ subscription, daysLeft }) => {
   return { success: true };
 };
 
+// Gửi hóa đơn đơn giản qua email (HTML, không PDF)
+const sendSimpleInvoiceEmail = async ({ invoice, appointment }) => {
+  const customer = invoice.customerId;
+  const currency = (process.env.CURRENCY || 'VND');
+  const serviceName = appointment?.serviceType?.name || (appointment?.serviceDetails?.isInspectionOnly ? 'Kiểm tra tổng quát' : 'Dịch vụ');
+  const source = String(invoice.notes || '').includes('source=') ? invoice.notes.split('source=')[1] : '';
+  const html = `
+    <div style="font-family: Arial, sans-serif; max-width: 640px; margin: 0 auto;">
+      <div style="background: #111827; color:#fff; padding: 20px; border-radius: 8px 8px 0 0;">
+        <h2 style="margin:0">Hóa đơn ${invoice.invoiceNumber}</h2>
+        <p style="margin:6px 0 0 0;">Ngày phát hành: ${new Date(invoice.issueDate).toLocaleDateString('vi-VN')}</p>
+      </div>
+      <div style="background:#f9fafb; padding: 20px;">
+        <p>Xin chào ${customer.fullName || customer.username},</p>
+        <p>Đây là hóa đơn cho dịch vụ gần đây của bạn tại EVCare.</p>
+        ${appointment ? `<p>Dịch vụ: <strong>${serviceName}</strong></p>` : ''}
+        <table style="width:100%; margin-top: 10px;">
+          <tr><td>Tạm tính:</td><td style="text-align:right; font-weight:600;">${invoice.subtotal.toLocaleString('vi-VN')} ${currency}</td></tr>
+          <tr><td>Thuế:</td><td style="text-align:right; font-weight:600;">${invoice.taxAmount.toLocaleString('vi-VN')} ${currency}</td></tr>
+          <tr><td>Giảm trừ:</td><td style="text-align:right; font-weight:600;">-${invoice.discountAmount.toLocaleString('vi-VN')} ${currency}</td></tr>
+          <tr><td style="font-weight:700;">Tổng thanh toán:</td><td style="text-align:right; font-weight:700;">${invoice.totalAmount.toLocaleString('vi-VN')} ${currency}</td></tr>
+        </table>
+        <p style="margin-top:10px; color:#6b7280;">Nguồn tính: ${source || '—'}</p>
+        <p style="margin-top:6px; color:#6b7280;">Ghi chú: ${invoice.notes || '—'}</p>
+      </div>
+      <div style="background:#e5e7eb; color:#111827; padding:12px; text-align:center; border-radius:0 0 8px 8px;">Cảm ơn bạn đã sử dụng EVCare</div>
+    </div>
+  `;
+
+  await sendEmail({
+    from: `"EVCare" <${process.env.EMAIL_USER}>`,
+    to: customer.email,
+    subject: `EVCare - Hóa đơn ${invoice.invoiceNumber}`,
+    html,
+  });
+  return { success: true };
+};
+
 export default {
   sendVerificationEmail,
   verifyEmail,
@@ -591,4 +636,5 @@ export default {
   sendRescheduleConfirmation,
   sendMaintenanceReminder,
   sendPackageRenewalReminder,
+  sendSimpleInvoiceEmail,
 };

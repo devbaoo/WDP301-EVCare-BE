@@ -16,6 +16,9 @@ import workProgressTrackingController from "../controllers/workProgressTrackingC
 import costAnalyticsController from "../controllers/costAnalyticsController.js";
 import notificationController from "../controllers/notificationController.js";
 import feedbackController from "../controllers/feedbackController.js";
+import systemSettingsController from "../controllers/systemSettingsController.js";
+import inventoryReservationController from "../controllers/inventoryReservationController.js";
+import invoiceController from "../controllers/invoiceController.js";
 import vehicleController from "../controllers/vehicleController.js";
 import { protect, authorize } from "../middleware/authMiddleware.js";
 
@@ -258,6 +261,12 @@ let initWebRoutes = (app) => {
         "/api/booking/:bookingId",
         protect,
         bookingController.getBookingDetails
+    );
+    router.post(
+        "/api/booking/:bookingId/confirm",
+        protect,
+        authorize("admin", "manager"),
+        bookingController.confirmBooking
     );
     router.put(
         "/api/booking/:bookingId/cancel",
@@ -689,6 +698,42 @@ let initWebRoutes = (app) => {
         workProgressTrackingController.updateProgressStatus
     );
 
+    // Inspection and quote management
+    router.post(
+        "/api/work-progress/:id/inspection-quote",
+        protect,
+        authorize("technician"),
+        workProgressTrackingController.submitInspectionAndQuote
+    );
+
+    router.put(
+        "/api/work-progress/:id/quote-response",
+        protect,
+        workProgressTrackingController.processQuoteResponse
+    );
+
+    router.post(
+        "/api/work-progress/:id/start-maintenance",
+        protect,
+        authorize("technician"),
+        workProgressTrackingController.startMaintenance
+    );
+
+    router.post(
+        "/api/work-progress/:id/complete-maintenance",
+        protect,
+        authorize("technician"),
+        workProgressTrackingController.completeMaintenance
+    );
+
+    router.post(
+        "/api/work-progress/:id/process-payment",
+        protect,
+        authorize("admin", "manager", "staff"),
+        workProgressTrackingController.processCashPayment
+    );
+
+
     // Milestone management
     router.post(
         "/api/work-progress/:id/milestones",
@@ -767,6 +812,54 @@ let initWebRoutes = (app) => {
         "/api/appointments/:appointmentId/feedback",
         protect,
         feedbackController.deleteMyFeedback
+    );
+
+    // ===== SYSTEM SETTINGS (ADMIN/MANAGER) =====
+    router.get(
+        "/api/settings/policies",
+        protect,
+        authorize("admin", "manager"),
+        systemSettingsController.getPolicies
+    );
+    router.put(
+        "/api/settings/policies",
+        protect,
+        authorize("admin", "manager"),
+        systemSettingsController.updatePolicies
+    );
+
+    // ===== INVENTORY RESERVATIONS =====
+    router.post(
+        "/api/inventory/reservations",
+        protect,
+        authorize("admin", "manager"),
+        inventoryReservationController.hold
+    );
+    router.post(
+        "/api/inventory/reservations/:reservationId/consume",
+        protect,
+        authorize("admin", "manager"),
+        inventoryReservationController.consume
+    );
+    router.post(
+        "/api/inventory/reservations/:reservationId/release",
+        protect,
+        authorize("admin", "manager"),
+        inventoryReservationController.release
+    );
+
+    // ===== INVOICE =====
+    router.post(
+        "/api/invoices/from-appointment/:appointmentId",
+        protect,
+        authorize("admin", "manager"),
+        invoiceController.createFromAppointment
+    );
+    router.post(
+        "/api/invoices/:invoiceId/send-email",
+        protect,
+        authorize("admin", "manager"),
+        invoiceController.sendEmail
     );
 
     // ===== HEALTH CHECK =====

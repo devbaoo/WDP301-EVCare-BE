@@ -32,10 +32,10 @@ const upsertFeedback = async (appointmentId, customerId, feedback) => {
             return { success: false, statusCode: 404, message: "Không tìm thấy booking" };
         }
 
-        // Optionally enforce status: allow after maintenance completed or completed
-        // if (!["maintenance_completed", "completed"].includes(appointment.status)) {
-        //     return { success: false, statusCode: 400, message: "Chỉ được đánh giá sau khi dịch vụ hoàn thành" };
-        // }
+        // Enforce status: allow only after maintenance completed or completed
+        if (!["maintenance_completed", "completed"].includes(appointment.status)) {
+            return { success: false, statusCode: 400, message: "Chỉ được đánh giá sau khi dịch vụ hoàn thành" };
+        }
 
         appointment.rating = appointment.rating || {};
         if (overall !== undefined) appointment.rating.overall = overall;
