@@ -15,6 +15,7 @@ import technicianScheduleController from "../controllers/technicianScheduleContr
 import workProgressTrackingController from "../controllers/workProgressTrackingController.js";
 import costAnalyticsController from "../controllers/costAnalyticsController.js";
 import notificationController from "../controllers/notificationController.js";
+import feedbackController from "../controllers/feedbackController.js";
 import vehicleController from "../controllers/vehicleController.js";
 import { protect, authorize } from "../middleware/authMiddleware.js";
 
@@ -744,6 +745,28 @@ let initWebRoutes = (app) => {
         protect,
         authorize("admin", "manager"),
         workProgressTrackingController.getServiceCenterPerformance
+    );
+
+    // ===== FEEDBACK (CUSTOMER) =====
+    router.get(
+        "/api/appointments/:appointmentId/feedback",
+        protect,
+        feedbackController.getMyFeedback
+    );
+    router.post(
+        "/api/appointments/:appointmentId/feedback",
+        protect,
+        feedbackController.upsertMyFeedback
+    );
+    router.put(
+        "/api/appointments/:appointmentId/feedback",
+        protect,
+        feedbackController.upsertMyFeedback
+    );
+    router.delete(
+        "/api/appointments/:appointmentId/feedback",
+        protect,
+        feedbackController.deleteMyFeedback
     );
 
     // ===== HEALTH CHECK =====
