@@ -492,24 +492,33 @@ const createBooking = async (bookingData) => {
             await servicePackage.save();
         }
 
-        // Check if payment is required
+        // Calculate upfront charge per policy: deposit or inspection fee
+        const DEPOSIT_RATE = Number(process.env.DEPOSIT_RATE || 0); // e.g., 0.2 for 20%
+        const INSPECTION_FEE = Number(process.env.INSPECTION_FEE || 0); // VND
+
         const requiresPayment = appointment.serviceDetails.estimatedCost > 0;
-        // set payment method/status/amount according to preference
-        if (requiresPayment) {
+        let upfrontCharge = 0;
+        let paymentDescription = "";
+
+        if (appointment.serviceDetails.isInspectionOnly) {
+            upfrontCharge = Math.max(0, Math.round(INSPECTION_FEE));
+            paymentDescription = "Phí kiểm tra tổng quát";
+        } else if (requiresPayment && DEPOSIT_RATE > 0) {
+            upfrontCharge = Math.max(0, Math.round(appointment.serviceDetails.estimatedCost * DEPOSIT_RATE));
+            paymentDescription = `Đặt cọc ${Math.round(DEPOSIT_RATE * 100)}% cho dịch vụ`;
+        }
+
+        // Set appointment payment placeholder (for booking step only)
+        if (upfrontCharge > 0) {
             if (paymentPreference === 'online') {
                 appointment.payment.method = 'ewallet';
-                appointment.payment.status = 'pending';
-                appointment.payment.amount = appointment.serviceDetails.estimatedCost;
             } else if (paymentPreference === 'offline') {
                 appointment.payment.method = 'cash';
-                appointment.payment.status = 'pending';
-                appointment.payment.amount = appointment.serviceDetails.estimatedCost;
             } else {
-                // default to offline if requires payment but no preference explicitly provided
                 appointment.payment.method = 'cash';
-                appointment.payment.status = 'pending';
-                appointment.payment.amount = appointment.serviceDetails.estimatedCost;
             }
+            appointment.payment.status = 'pending';
+            appointment.payment.amount = upfrontCharge;
         } else {
             appointment.payment.method = 'not_required';
             appointment.payment.status = 'pending';
@@ -520,7 +529,7 @@ const createBooking = async (bookingData) => {
         // Populate appointment data for response and email (after payment fields are set)
         await appointment.populate([
             { path: "customer", select: "username fullName email phone" },
-            { path: "vehicle", select: "vehicleInfo technicalSpecs" },
+            { path: "vehicle", select: "vehicleInfo technicalSpecs", populate: { path: "vehicleInfo.vehicleModel", select: "brand modelName batteryType" } },
             { path: "serviceCenter", select: "name address contact" },
             { path: "serviceType", select: "name category pricing" },
         ]);
@@ -535,15 +544,15 @@ const createBooking = async (bookingData) => {
 
         let paymentInfo = null;
 
-        // Always attempt to create payment for online preference. The service will fallback to mock if not configured
-        if (requiresPayment && paymentPreference === 'online') {
+        // If there is an upfront charge and online preference, create a payment link for deposit/inspection fee
+        if (upfrontCharge > 0 && paymentPreference === 'online') {
             try {
-                const paymentResult = await payosService.createBookingPayment(appointment._id, customerId);
+                const paymentResult = await payosService.createAppointmentCustomPayment(appointment._id, customerId, upfrontCharge, paymentDescription);
                 if (paymentResult.success) {
                     paymentInfo = paymentResult.data;
                 }
             } catch (paymentError) {
-                console.error("Create payment error:", paymentError);
+                console.error("Create upfront payment error:", paymentError);
                 // Don't fail the booking if payment creation fails
             }
         }
@@ -551,13 +560,13 @@ const createBooking = async (bookingData) => {
         return {
             success: true,
             statusCode: 201,
-            message: requiresPayment
-                ? "Tạo booking thành công. Vui lòng thanh toán để xác nhận lịch hẹn."
+            message: upfrontCharge > 0
+                ? "Tạo booking thành công. Vui lòng thanh toán đặt cọc/phí kiểm tra để xác nhận."
                 : "Tạo booking thành công. Vui lòng chờ xác nhận từ trung tâm.",
             data: {
                 appointment,
                 payment: paymentInfo,
-                requiresPayment,
+                requiresPayment: upfrontCharge > 0,
             },
         };
     } catch (error) {
@@ -810,11 +819,45 @@ const getBookingDetails = async (bookingId, customerId) => {
     }
 };
 
+const confirmBooking = async (bookingId, staffId) => {
+    try {
+        const appointment = await Appointment.findById(bookingId).populate('serviceCenter');
+        if (!appointment) {
+            return { success: false, statusCode: 404, message: "Không tìm thấy booking" };
+        }
+
+        // Nếu có upfront (amount>0) thì phải paid
+        const requiresUpfront = (appointment?.payment?.amount || 0) > 0;
+        if (requiresUpfront && appointment.payment.status !== 'paid') {
+            return { success: false, statusCode: 400, message: "Chưa thanh toán đặt cọc/phí kiểm tra" };
+        }
+
+        // Capacity check (đơn giản): chặn nếu center có status !== 'active'
+        if (appointment?.serviceCenter?.status && appointment.serviceCenter.status !== 'active') {
+            return { success: false, statusCode: 400, message: "Trung tâm đang tạm ngưng hoạt động" };
+        }
+
+        try { appointment.statusHistory = appointment.statusHistory || []; appointment.statusHistory.push({ from: appointment.status, to: 'confirmed', by: staffId, at: new Date() }); } catch (_) { }
+        appointment.status = 'confirmed';
+        appointment.confirmation = appointment.confirmation || {};
+        appointment.confirmation.isConfirmed = true;
+        appointment.confirmation.confirmedAt = new Date();
+        appointment.confirmation.confirmedBy = staffId;
+        await appointment.save();
+
+        return { success: true, statusCode: 200, message: "Xác nhận booking thành công", data: appointment };
+    } catch (error) {
+        console.error('Confirm booking error:', error);
+        return { success: false, statusCode: 500, message: 'Lỗi khi xác nhận booking' };
+    }
+};
+
 export default {
     getAvailableServiceCenters,
     getCompatibleServices,
     getAvailableSlots,
     createBooking,
+    confirmBooking,
     getCustomerBookings,
     cancelBooking,
     rescheduleBooking,

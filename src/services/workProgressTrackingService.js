@@ -3,6 +3,7 @@ import WorkProgressTracking from "../models/workProgressTracking.js";
 import User from "../models/user.js";
 import Appointment from "../models/appointment.js";
 import ServiceRecord from "../models/serviceRecord.js";
+import invoiceService from "./invoiceService.js";
 
 const workProgressTrackingService = {
   // Get all progress records with optional filtering
@@ -310,6 +311,11 @@ const workProgressTrackingService = {
         progressRecord.appointmentId
       );
       if (appointment) {
+        // Append status history for audit
+        try {
+          appointment.statusHistory = appointment.statusHistory || [];
+          appointment.statusHistory.push({ from: appointment.status, to: 'inspection_completed', at: new Date() });
+        } catch (_) { }
         if (updateData.currentStatus === "quote_provided") {
           appointment.status = "quote_provided";
           appointment.inspectionAndQuote = {
@@ -394,12 +400,36 @@ const workProgressTrackingService = {
       );
       if (appointment) {
         if (response.status === "approved") {
+          try { appointment.statusHistory = appointment.statusHistory || []; appointment.statusHistory.push({ from: appointment.status, to: 'quote_approved', at: new Date() }); } catch (_) { }
           appointment.status = "quote_approved";
           appointment.inspectionAndQuote.quoteStatus = "approved";
           appointment.inspectionAndQuote.customerResponseAt = new Date();
           appointment.inspectionAndQuote.customerResponseNotes =
             response.notes || "";
+          // Auto-create reservation from quoteDetails if available
+          try {
+            const quoteDetails = appointment.inspectionAndQuote?.quoteDetails;
+            if (quoteDetails && Array.isArray(quoteDetails.items) && quoteDetails.items.length > 0) {
+              const items = quoteDetails.items
+                .filter(it => it.partId && it.quantity > 0)
+                .map(it => ({ partId: it.partId, quantity: it.quantity }));
+              if (items.length > 0) {
+                const { default: reservationService } = await import('./inventoryReservationService.js');
+                await reservationService.hold({
+                  appointmentId: appointment._id,
+                  serviceCenterId: appointment.serviceCenter,
+                  items,
+                  expiresAt: new Date(Date.now() + 48 * 60 * 60 * 1000),
+                  notes: 'Auto-reservation from approved quote',
+                });
+              }
+            }
+          } catch (e) {
+            // eslint-disable-next-line no-console
+            console.error('Auto reservation from quote error:', e);
+          }
         } else {
+          try { appointment.statusHistory = appointment.statusHistory || []; appointment.statusHistory.push({ from: appointment.status, to: 'quote_rejected', at: new Date() }); } catch (_) { }
           appointment.status = "quote_rejected";
           appointment.inspectionAndQuote.quoteStatus = "rejected";
           appointment.inspectionAndQuote.customerResponseAt = new Date();
@@ -454,6 +484,7 @@ const workProgressTrackingService = {
         progressRecord.appointmentId
       );
       if (appointment) {
+        try { appointment.statusHistory = appointment.statusHistory || []; appointment.statusHistory.push({ from: appointment.status, to: 'maintenance_in_progress', at: new Date() }); } catch (_) { }
         appointment.status = "maintenance_in_progress";
         await appointment.save();
       }
@@ -505,6 +536,7 @@ const workProgressTrackingService = {
         progressRecord.appointmentId
       );
       if (appointment) {
+        try { appointment.statusHistory = appointment.statusHistory || []; appointment.statusHistory.push({ from: appointment.status, to: 'maintenance_completed', at: new Date() }); } catch (_) { }
         appointment.status = "maintenance_completed";
         appointment.completion = {
           isCompleted: true,
@@ -514,6 +546,18 @@ const workProgressTrackingService = {
           recommendations: maintenanceData.recommendations || "",
         };
         await appointment.save();
+
+        // Auto-create invoice (draft) and send via email (no PDF)
+        try {
+          const invResult = await invoiceService.createFromAppointment(appointment._id, {});
+          if (invResult?.success && invResult.data?._id) {
+            await invoiceService.sendInvoiceEmail(invResult.data._id);
+          }
+        } catch (e) {
+          // Do not fail maintenance completion on invoice/email error
+          // eslint-disable-next-line no-console
+          console.error("Auto invoice/email after maintenance error:", e);
+        }
       }
 
       const updatedRecord = await WorkProgressTracking.findByIdAndUpdate(

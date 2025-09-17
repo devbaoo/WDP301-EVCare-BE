@@ -323,14 +323,27 @@ const createBookingPayment = async (appointmentId, customerId) => {
     }
 };
 
-// Handle PayOS webhook
+// Handle PayOS webhook with idempotency
 const handleWebhook = async (webhookData) => {
     try {
-        const { orderCode, status, transactionTime, amount, fee, netAmount } = webhookData;
+        // Normalize payload (PayOS có thể bọc trong data)
+        const payload = webhookData?.data && typeof webhookData.data === 'object' ? webhookData.data : webhookData;
+        let { orderCode, status, transactionTime, amount, fee, netAmount, eventId } = payload;
+
+        // Coerce types
+        const numericOrderCode = parseInt(orderCode, 10);
+        const numericAmount = amount !== undefined ? Number(amount) : undefined;
+        const numericFee = fee !== undefined ? Number(fee) : 0;
+        const numericNet = netAmount !== undefined ? Number(netAmount) : (numericAmount !== undefined ? numericAmount - numericFee : undefined);
+
+        // Map status variants
+        const normalizedStatus = (status || '').toUpperCase();
+        const statusMap = { SUCCESS: 'PAID', COMPLETED: 'PAID', DONE: 'PAID', CANCEL: 'CANCELLED' };
+        const finalStatus = statusMap[normalizedStatus] || normalizedStatus;
 
         // Find payment by order code
         const payment = await Payment.findOne({
-            "payosInfo.orderCode": orderCode,
+            "payosInfo.orderCode": numericOrderCode,
         });
 
         if (!payment) {
@@ -340,26 +353,34 @@ const handleWebhook = async (webhookData) => {
             };
         }
 
+        // Idempotency: if same event already processed (prefer eventId)
+        const incomingId = eventId || `${numericOrderCode}|${finalStatus}|${numericAmount}`;
+        const prev = payment.webhook?.data || {};
+        const existingId = prev.eventId || `${prev.orderCode || prev.payosInfo?.orderCode || ''}|${prev.status}|${prev.amount}`;
+        if (existingId && existingId === incomingId) {
+            return { success: true, message: "Duplicate webhook ignored" };
+        }
+
         // Update webhook info
         payment.webhook.received = true;
         payment.webhook.receivedAt = new Date();
-        payment.webhook.data = webhookData;
+        payment.webhook.data = { ...payload, status: finalStatus };
 
         // Handle different statuses
-        switch (status) {
+        switch (finalStatus) {
             case "PAID":
                 await payment.markAsPaid({
-                    transactionId: webhookData.transactionId,
-                    amount: amount,
-                    fee: fee || 0,
-                    netAmount: netAmount || amount,
+                    transactionId: payload.transactionId,
+                    amount: numericAmount,
+                    fee: numericFee,
+                    netAmount: numericNet,
                 });
 
                 // Update appointment status
                 await Appointment.findByIdAndUpdate(payment.appointment, {
                     "payment.status": "paid",
                     "payment.paidAt": new Date(),
-                    "payment.transactionId": webhookData.transactionId,
+                    "payment.transactionId": payload.transactionId,
                 });
                 break;
 
@@ -641,6 +662,79 @@ const createSubscriptionPayment = async (subscriptionId, customerId) => {
     }
 };
 
+// Create custom payment for an appointment (e.g., deposit or inspection fee)
+const createAppointmentCustomPayment = async (appointmentId, customerId, amount, description) => {
+    try {
+        // Validate amount
+        const roundedAmount = Math.max(0, Math.round(Number(amount || 0)));
+        if (roundedAmount <= 0) {
+            return {
+                success: false,
+                statusCode: 400,
+                message: "Số tiền thanh toán không hợp lệ",
+            };
+        }
+
+        // Create payment link
+        const paymentLinkResult = await createPaymentLink({
+            amount: roundedAmount,
+            description: description || `Thanh toán đặt cọc/kiểm tra cho booking #${appointmentId}`,
+            items: [
+                { name: "EVCare Deposit/Inspection Fee", quantity: 1, price: roundedAmount },
+            ],
+        });
+
+        if (!paymentLinkResult.success) {
+            return {
+                success: false,
+                statusCode: 500,
+                message: paymentLinkResult.message || "Không thể tạo link thanh toán",
+            };
+        }
+
+        // Create payment record
+        const payment = new Payment({
+            appointment: appointmentId,
+            customer: customerId,
+            paymentInfo: {
+                amount: roundedAmount,
+                currency: "VND",
+                description: description || "Deposit/Inspection fee",
+                orderCode: paymentLinkResult.data.orderCode,
+            },
+            payosInfo: paymentLinkResult.data,
+            paymentMethod: "payos",
+            status: "pending",
+            expiresAt: new Date(Date.now() + 15 * 60 * 1000),
+        });
+
+        await payment.save();
+
+        return {
+            success: true,
+            statusCode: 201,
+            message: "Tạo thanh toán đặt cọc/kiểm tra thành công",
+            data: {
+                paymentId: payment._id,
+                orderCode: payment.payosInfo.orderCode,
+                paymentLink: payment.payosInfo.paymentLink,
+                qrCode: payment.payosInfo.qrCode,
+                checkoutUrl: payment.payosInfo.checkoutUrl,
+                deepLink: payment.payosInfo.deepLink,
+                amount: payment.paymentInfo.amount,
+                expiresAt: payment.expiresAt,
+            },
+        };
+    } catch (error) {
+        console.error("Create appointment custom payment error:", error);
+        return {
+            success: false,
+            statusCode: 500,
+            message: "Lỗi khi tạo thanh toán đặt cọc/kiểm tra",
+        };
+    }
+};
+
 export default {
     createPaymentLink,
     createMockPaymentLink,
@@ -648,6 +742,7 @@ export default {
     cancelPayment,
     createBookingPayment,
     createSubscriptionPayment,
+    createAppointmentCustomPayment,
     handleWebhook,
     getPaymentStatus,
     cancelBookingPayment,

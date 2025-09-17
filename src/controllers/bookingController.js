@@ -102,6 +102,23 @@ const createBooking = async (req, res) => {
     }
 };
 
+// Xác nhận booking (confirm) với confirm gate (yêu cầu upfront đã thanh toán nếu có)
+const confirmBooking = async (req, res) => {
+    try {
+        const { bookingId } = req.params;
+        const staffId = req.user.id;
+        const result = await bookingService.confirmBooking(bookingId, staffId);
+        return res.status(result.statusCode).json({
+            success: result.success,
+            message: result.message,
+            data: result.data,
+        });
+    } catch (error) {
+        console.error("Confirm booking error:", error);
+        res.status(500).json({ success: false, message: "Server error" });
+    }
+};
+
 // Lấy danh sách booking của customer
 const getCustomerBookings = async (req, res) => {
     try {
@@ -201,6 +218,7 @@ export default {
     getCompatibleServices,
     getAvailableSlots,
     createBooking,
+    confirmBooking,
     getCustomerBookings,
     cancelBooking,
     rescheduleBooking,

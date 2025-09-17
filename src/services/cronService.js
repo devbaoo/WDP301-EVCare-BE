@@ -1,5 +1,7 @@
 import cron from 'node-cron';
 import reminderService from './reminderService.js';
+import SystemSettings from "../models/systemSettings.js";
+import Appointment from "../models/appointment.js";
 
 class CronService {
     constructor() {
@@ -72,10 +74,44 @@ class CronService {
             timezone: "Asia/Ho_Chi_Minh"
         });
 
+        // Job 4: Auto-cancel unpaid upfront bookings mỗi 15 phút
+        const autoCancelJob = cron.schedule('*/15 * * * *', async () => {
+            console.log('Running auto-cancel unpaid upfront bookings...');
+            try {
+                const settings = await SystemSettings.getSettings();
+                const minutes = settings.autoCancelUnpaidMinutes || 30;
+                const threshold = new Date(Date.now() - minutes * 60 * 1000);
+
+                // Tìm appointment pending_confirmation có payment.amount>0 && payment.status=pending && createdAt < threshold
+                const toCancel = await Appointment.find({
+                    status: 'pending_confirmation',
+                    'payment.amount': { $gt: 0 },
+                    'payment.status': 'pending',
+                    createdAt: { $lt: threshold },
+                }).limit(100);
+
+                for (const appt of toCancel) {
+                    appt.status = 'cancelled';
+                    appt.cancellation = appt.cancellation || {};
+                    appt.cancellation.isCancelled = true;
+                    appt.cancellation.cancelledAt = new Date();
+                    appt.cancellation.reason = 'Auto-cancel: unpaid upfront timeout';
+                    await appt.save();
+                }
+                console.log(`Auto-cancelled ${toCancel.length} bookings`);
+            } catch (error) {
+                console.error('Error running auto-cancel job:', error);
+            }
+        }, {
+            scheduled: false,
+            timezone: "Asia/Ho_Chi_Minh"
+        });
+
         // Lưu jobs
         this.jobs.set('maintenance-daily', maintenanceJob);
         this.jobs.set('package-daily', packageJob);
         this.jobs.set('maintenance-weekly', weeklyMaintenanceJob);
+        this.jobs.set('auto-cancel-unpaid', autoCancelJob);
 
         // Khởi động tất cả jobs
         this.jobs.forEach((job, name) => {
