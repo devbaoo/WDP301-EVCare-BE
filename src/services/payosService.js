@@ -369,7 +369,7 @@ const handleWebhook = async (webhookData, webhookId = null) => {
 
         // Normalize payload (PayOS có thể bọc trong data)
         const payload = webhookData?.data && typeof webhookData.data === 'object' ? webhookData.data : webhookData;
-        let { orderCode, status, transactionTime, amount, fee, netAmount, eventId, transactionId, id } = payload;
+        let { orderCode, status, transactionTime, amount, fee, netAmount, eventId, transactionId, id, code, desc, success, paymentLinkId, reference, transactionDateTime } = payload;
 
         // Validate required fields
         if (!orderCode) {
@@ -387,16 +387,30 @@ const handleWebhook = async (webhookData, webhookId = null) => {
         const numericFee = fee !== undefined ? Number(fee) : 0;
         const numericNet = netAmount !== undefined ? Number(netAmount) : (numericAmount !== undefined ? numericAmount - numericFee : undefined);
 
-        // Map status variants
-        const normalizedStatus = (status || '').toUpperCase();
+        // Map status variants (PayOS can send different shapes)
+        let normalizedStatus = (status || '').toUpperCase();
+        // Fallbacks: use top-level code/data.code/desc/success
+        const topCode = (code || '').toString();
+        const dataCode = (payload?.data?.code || '').toString();
+        const topDesc = (desc || payload?.data?.desc || '').toString().toLowerCase();
+        const topSuccess = Boolean(success || payload?.data?.success);
+
+        if (!normalizedStatus) {
+            if (topCode === '00' || dataCode === '00' || topDesc.includes('success') || topSuccess) {
+                normalizedStatus = 'PAID';
+            }
+        }
+
         const statusMap = {
             SUCCESS: 'PAID',
             COMPLETED: 'PAID',
             DONE: 'PAID',
+            PAID: 'PAID',
+            '00': 'PAID',
             CANCEL: 'CANCELLED',
             CANCELLED: 'CANCELLED',
             EXPIRED: 'EXPIRED',
-            FAILED: 'FAILED'
+            FAILED: 'FAILED',
         };
         const finalStatus = statusMap[normalizedStatus] || normalizedStatus;
 
@@ -404,16 +418,16 @@ const handleWebhook = async (webhookData, webhookId = null) => {
             orderCode: isNaN(numericOrderCode) ? null : numericOrderCode,
             status: finalStatus,
             amount: numericAmount,
-            transactionId,
-            paymentLinkId: id || payload?.paymentLinkId || null
+            transactionId: transactionId || reference || payload?.data?.reference || null,
+            paymentLinkId: id || paymentLinkId || payload?.paymentLinkId || null
         });
 
         // Find payment by order code or by paymentLinkId when orderCode is missing
         let paymentQuery = null;
         if (!isNaN(numericOrderCode)) {
             paymentQuery = { "payosInfo.orderCode": numericOrderCode };
-        } else if (id) {
-            paymentQuery = { "payosInfo.paymentLinkId": id };
+        } else if (id || paymentLinkId || payload?.paymentLinkId) {
+            paymentQuery = { "payosInfo.paymentLinkId": id || paymentLinkId || payload?.paymentLinkId };
         }
 
         const payment = await Payment.findOne(paymentQuery || {}).populate('appointment', 'status serviceType serviceCenter customer');
@@ -463,7 +477,7 @@ const handleWebhook = async (webhookData, webhookId = null) => {
             case "PAID":
                 console.log(`[${webhookId || 'webhook'}] Marking payment as paid`);
                 await payment.markAsPaid({
-                    transactionId: transactionId || payload.transactionId,
+                    transactionId: transactionId || reference || payload?.data?.reference || payload.transactionId,
                     amount: numericAmount,
                     fee: numericFee,
                     netAmount: numericNet,
@@ -474,7 +488,7 @@ const handleWebhook = async (webhookData, webhookId = null) => {
                     await Appointment.findByIdAndUpdate(payment.appointment._id, {
                         "payment.status": "paid",
                         "payment.paidAt": new Date(),
-                        "payment.transactionId": transactionId || payload.transactionId,
+                        "payment.transactionId": transactionId || reference || payload?.data?.reference || payload.transactionId,
                         "status": "confirmed"
                     });
                     console.log(`[${webhookId || 'webhook'}] Updated appointment status to confirmed`);
