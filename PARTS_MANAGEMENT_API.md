@@ -21,7 +21,6 @@ Authorization: Bearer <your_token>
 Role-based access control is implemented:
 
 - `admin`: Full access to all endpoints
-- `manager`: Access to most endpoints except deletion operations
 - `staff`: Access to view parts, inventory, and create transactions
 - `technician`: Limited access to view compatible parts
 
@@ -34,7 +33,7 @@ Retrieves a list of all parts with optional filtering.
 - **URL**: `/api/parts`
 - **Method**: `GET`
 - **Auth Required**: Yes
-- **Permissions**: admin, manager, staff
+- **Permissions**: admin, staff
 - **Query Parameters**:
   - `partNumber`: Filter by part number (partial match)
   - `partName`: Filter by part name (partial match)
@@ -84,7 +83,7 @@ Retrieves a specific part by its ID.
 - **URL**: `/api/parts/:id`
 - **Method**: `GET`
 - **Auth Required**: Yes
-- **Permissions**: admin, manager, staff
+- **Permissions**: admin, staff
 - **URL Parameters**:
   - `id`: Part ID
 
@@ -97,7 +96,7 @@ Retrieves parts filtered by category.
 - **URL**: `/api/parts/category/:category`
 - **Method**: `GET`
 - **Auth Required**: Yes
-- **Permissions**: admin, manager, staff
+- **Permissions**: admin, staff
 - **URL Parameters**:
   - `category`: Part category (e.g., "battery", "motor", "brake")
 
@@ -110,7 +109,7 @@ Retrieves parts compatible with a specific vehicle model.
 - **URL**: `/api/vehicle-models/:vehicleModelId/compatible-parts`
 - **Method**: `GET`
 - **Auth Required**: Yes
-- **Permissions**: admin, manager, staff, technician
+- **Permissions**: admin, staff, technician
 - **URL Parameters**:
   - `vehicleModelId`: Vehicle model ID
 
@@ -123,7 +122,7 @@ Creates a new part.
 - **URL**: `/api/parts`
 - **Method**: `POST`
 - **Auth Required**: Yes
-- **Permissions**: admin, manager
+- **Permissions**: admin, staff
 - **Request Body**:
 
 ```json
@@ -176,7 +175,7 @@ Updates an existing part.
 - **URL**: `/api/parts/:id`
 - **Method**: `PUT`
 - **Auth Required**: Yes
-- **Permissions**: admin, manager
+- **Permissions**: admin, staff
 - **URL Parameters**:
   - `id`: Part ID
 - **Request Body**: Same as Create Part (only include fields to update)
@@ -212,7 +211,7 @@ Retrieves a list of all inventory items with optional filtering.
 - **URL**: `/api/inventory`
 - **Method**: `GET`
 - **Auth Required**: Yes
-- **Permissions**: admin, manager, staff
+- **Permissions**: admin, staff
 - **Query Parameters**:
   - `centerId`: Filter by service center ID
   - `partId`: Filter by part ID
@@ -261,7 +260,7 @@ Retrieves a specific inventory item by its ID.
 - **URL**: `/api/inventory/:id`
 - **Method**: `GET`
 - **Auth Required**: Yes
-- **Permissions**: admin, manager, staff
+- **Permissions**: admin, staff
 - **URL Parameters**:
   - `id`: Inventory item ID
 
@@ -274,7 +273,7 @@ Retrieves inventory items with stock levels below their reorder points.
 - **URL**: `/api/inventory/alerts/low-stock`
 - **Method**: `GET`
 - **Auth Required**: Yes
-- **Permissions**: admin, manager, staff
+- **Permissions**: admin, staff
 - **Query Parameters**:
   - `centerId`: Optional filter by service center ID
 
@@ -287,7 +286,7 @@ Retrieves inventory statistics for a service center.
 - **URL**: `/api/service-centers/:centerId/inventory-stats`
 - **Method**: `GET`
 - **Auth Required**: Yes
-- **Permissions**: admin, manager, staff
+- **Permissions**: admin, staff
 - **URL Parameters**:
   - `centerId`: Service center ID
 
@@ -314,7 +313,7 @@ Creates a new inventory item for a part at a service center.
 - **URL**: `/api/inventory`
 - **Method**: `POST`
 - **Auth Required**: Yes
-- **Permissions**: admin, manager
+- **Permissions**: admin, staff
 - **Request Body**:
 
 ```json
@@ -359,7 +358,7 @@ Updates an existing inventory item.
 - **URL**: `/api/inventory/:id`
 - **Method**: `PUT`
 - **Auth Required**: Yes
-- **Permissions**: admin, manager
+- **Permissions**: admin, staff
 - **URL Parameters**:
   - `id`: Inventory item ID
 - **Request Body**: Same as Create Inventory Item (only include fields to update)
@@ -373,7 +372,7 @@ Records a transaction for an inventory item (stock in, out, or adjustment).
 - **URL**: `/api/inventory/transactions`
 - **Method**: `POST`
 - **Auth Required**: Yes
-- **Permissions**: admin, manager, staff
+- **Permissions**: admin, staff
 - **Request Body**:
 
 ```json
@@ -416,7 +415,7 @@ Retrieves a list of inventory transactions with optional filtering.
 - **URL**: `/api/inventory/transactions`
 - **Method**: `GET`
 - **Auth Required**: Yes
-- **Permissions**: admin, manager, staff
+- **Permissions**: admin, staff
 - **Query Parameters**:
   - `inventoryId`: Filter by inventory item ID
   - `transactionType`: Filter by transaction type (in, out, adjustment, transfer)
@@ -455,8 +454,8 @@ Retrieves a list of inventory transactions with optional filtering.
       "notes": "Restocking from supplier",
       "performedBy": {
         "_id": "60d21b4667d0d8992e610c60",
-        "username": "manager1",
-        "fullName": "John Manager"
+        "username": "staff1",
+        "fullName": "John Staff"
       },
       "transactionDate": "2023-06-18T10:00:00.000Z"
     }
@@ -473,7 +472,7 @@ Retrieves a list of AI predictions with optional filtering.
 - **URL**: `/api/ai/predictions`
 - **Method**: `GET`
 - **Auth Required**: Yes
-- **Permissions**: admin, manager, staff
+- **Permissions**: admin, staff
 - **Query Parameters**:
   - `centerId`: Filter by service center ID
   - `partId`: Filter by part ID
@@ -525,7 +524,7 @@ Retrieves a specific prediction by its ID.
 - **URL**: `/api/ai/predictions/:id`
 - **Method**: `GET`
 - **Auth Required**: Yes
-- **Permissions**: admin, manager, staff
+- **Permissions**: admin, staff
 - **URL Parameters**:
   - `id`: Prediction ID
 
@@ -538,7 +537,7 @@ Generates demand forecast predictions for parts at a service center.
 - **URL**: `/api/ai/demand-forecast`
 - **Method**: `POST`
 - **Auth Required**: Yes
-- **Permissions**: admin, manager
+- **Permissions**: admin, staff
 - **Request Body**:
 
 ```json
@@ -582,7 +581,7 @@ Generates stock optimization recommendations based on demand forecasts.
 - **URL**: `/api/ai/stock-optimization`
 - **Method**: `POST`
 - **Auth Required**: Yes
-- **Permissions**: admin, manager
+- **Permissions**: admin, staff
 - **Request Body**:
 
 ```json
@@ -631,7 +630,7 @@ Applies AI-generated stock level recommendations to inventory settings.
 - **URL**: `/api/ai/apply-recommendations`
 - **Method**: `POST`
 - **Auth Required**: Yes
-- **Permissions**: admin, manager
+- **Permissions**: admin, staff
 - **Request Body**:
 
 ```json

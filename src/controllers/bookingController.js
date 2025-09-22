@@ -119,7 +119,7 @@ const confirmBooking = async (req, res) => {
     }
 };
 
-// Lấy các booking đã thanh toán và chờ xác nhận (admin/manager)
+// Lấy các booking đã thanh toán và chờ xác nhận (admin/staff)
 const getPaidAwaitingConfirmation = async (req, res) => {
     try {
         const filters = {
