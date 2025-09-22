@@ -144,10 +144,11 @@ const handleWebhook = async (req, res) => {
             }
 
             if (!signature) {
-                console.warn(`[${webhookId}] Missing PayOS signature`);
-                return res.status(400).json({
-                    success: false,
-                    message: "Missing webhook signature",
+                console.warn(`[${webhookId}] Missing PayOS signature → treating as verification ping (no-op 200)`);
+                return res.status(200).json({
+                    success: true,
+                    message: "Webhook verification OK (no signature)",
+                    timestamp: new Date().toISOString(),
                     webhookId
                 });
             }
