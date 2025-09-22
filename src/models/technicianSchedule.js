@@ -18,15 +18,22 @@ const TechnicianScheduleSchema = new mongoose.Schema(
     },
     shiftStart: {
       type: String, // lưu dưới dạng HH:mm
-      required: true,
+      default: "08:00", // mặc định 8h sáng
     },
     shiftEnd: {
       type: String, // lưu dưới dạng HH:mm
-      required: true,
+      default: "17:00", // mặc định 5h chiều
     },
     status: {
       type: String,
-      enum: ["scheduled", "working", "completed", "absent", "on_leave"],
+      enum: [
+        "scheduled",
+        "working",
+        "completed",
+        "absent",
+        "on_leave",
+        "leave_requested",
+      ],
       default: "scheduled",
     },
     breakTime: [
@@ -70,6 +77,23 @@ const TechnicianScheduleSchema = new mongoose.Schema(
     },
     notes: {
       type: String,
+    },
+    // Thông tin xin nghỉ phép
+    leaveRequest: {
+      startDate: { type: Date },
+      endDate: { type: Date },
+      reason: { type: String },
+      status: {
+        type: String,
+        enum: ["pending", "approved", "rejected"],
+        default: "pending",
+      },
+      approvedBy: {
+        type: mongoose.Schema.Types.ObjectId,
+        ref: "User", // người quản lý phê duyệt
+      },
+      approvedAt: { type: Date },
+      requestedAt: { type: Date },
     },
     createdAt: {
       type: Date,
