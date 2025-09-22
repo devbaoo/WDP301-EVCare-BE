@@ -255,6 +255,13 @@ let initWebRoutes = (app) => {
     authorize("admin", "staff"),
     bookingController.getPaidAwaitingConfirmation
   );
+  // List confirmed bookings (for work-progress intake)
+  router.get(
+    "/api/bookings/confirmed",
+    protect,
+    authorize("admin", "staff", "technician"),
+    bookingController.getConfirmedBookings
+  );
   router.put(
     "/api/booking/:bookingId/cancel",
     protect,
@@ -773,19 +780,19 @@ let initWebRoutes = (app) => {
   router.get(
     "/api/staff-assignments",
     protect,
-    authorize("admin", "manager"),
+    authorize("admin"),
     staffAssignmentController.getAllStaffAssignments
   );
   router.get(
     "/api/staff-assignments/:id",
     protect,
-    authorize("admin", "manager"),
+    authorize("admin"),
     staffAssignmentController.getStaffAssignmentById
   );
   router.get(
     "/api/service-centers/:centerId/staff",
     protect,
-    authorize("admin", "manager"),
+    authorize("admin"),
     staffAssignmentController.getStaffByCenter
   );
   router.get(
@@ -814,7 +821,7 @@ let initWebRoutes = (app) => {
   router.put(
     "/api/staff-assignments/:id/position",
     protect,
-    authorize("admin", "manager"),
+    authorize("admin"),
     staffAssignmentController.updateStaffPosition
   );
 
@@ -822,26 +829,14 @@ let initWebRoutes = (app) => {
   router.get(
     "/api/technician-certificates",
     protect,
-    authorize("admin", "manager"),
+    authorize("admin"),
     technicianCertificateController.getAllCertificates
   );
   router.get(
     "/api/technician-certificates/:id",
     protect,
-    authorize("admin", "manager"),
+    authorize("admin"),
     technicianCertificateController.getCertificateById
-  );
-  router.post(
-    "/api/technician-certificates",
-    protect,
-    authorize("admin", "manager"),
-    technicianCertificateController.createCertificate
-  );
-  router.put(
-    "/api/technician-certificates/:id",
-    protect,
-    authorize("admin", "manager"),
-    technicianCertificateController.updateCertificate
   );
   router.delete(
     "/api/technician-certificates/:id",
@@ -849,132 +844,50 @@ let initWebRoutes = (app) => {
     authorize("admin"),
     technicianCertificateController.deleteCertificate
   );
-  router.put(
-    "/api/technician-certificates/:id/status",
-    protect,
-    authorize("admin", "manager"),
-    technicianCertificateController.updateCertificateStatus
-  );
+
   router.get(
     "/api/technicians/:technicianId/certificates",
     protect,
     technicianCertificateController.getCertificatesByTechnician
   );
-  router.get(
-    "/api/technician-certificates/specialization/:specialization",
-    protect,
-    authorize("admin", "manager"),
-    technicianCertificateController.getCertificatesBySpecialization
-  );
-  router.get(
-    "/api/technician-certificates/expiry/check",
-    protect,
-    authorize("admin", "manager"),
-    technicianCertificateController.checkExpiredCertificates
-  );
-  router.get(
-    "/api/technician-certificates/expiry/soon",
-    protect,
-    authorize("admin", "manager"),
-    technicianCertificateController.getSoonToExpireCertificates
-  );
+
 
   // ===== TECHNICIAN SCHEDULE =====
-  router.get(
-    "/api/technician-schedules",
-    protect,
-    authorize("admin", "manager"),
-    technicianScheduleController.getAllSchedules
-  );
+
   router.get(
     "/api/technician-schedules/:id",
     protect,
-    authorize("admin", "manager", "technician"),
+    authorize("admin", "technician"),
     technicianScheduleController.getScheduleById
   );
-  router.post(
-    "/api/technician-schedules",
-    protect,
-    authorize("admin", "manager"),
-    technicianScheduleController.createSchedule
-  );
-  router.post(
-    "/api/technician-schedules/default",
-    protect,
-    authorize("admin", "manager"),
-    technicianScheduleController.createDefaultSchedule
-  );
-  router.put(
-    "/api/technician-schedules/:id",
-    protect,
-    authorize("admin", "manager"),
-    technicianScheduleController.updateSchedule
-  );
-  router.delete(
-    "/api/technician-schedules/:id",
-    protect,
-    authorize("admin", "manager"),
-    technicianScheduleController.deleteSchedule
-  );
+
   router.get(
     "/api/technicians/:technicianId/schedules",
     protect,
     technicianScheduleController.getSchedulesByTechnician
   );
-  router.get(
-    "/api/service-centers/:centerId/schedules",
-    protect,
-    authorize("admin", "manager"),
-    technicianScheduleController.getSchedulesByCenter
-  );
+
   router.put(
     "/api/technician-schedules/:id/status",
     protect,
-    authorize("admin", "manager", "technician"),
+    authorize("admin", "technician"),
     technicianScheduleController.updateScheduleStatus
   );
   router.post(
     "/api/technician-schedules/:id/check-in",
     protect,
-    authorize("admin", "manager", "technician"),
+    authorize("admin", "technician"),
     technicianScheduleController.recordCheckIn
   );
   router.post(
     "/api/technician-schedules/:id/check-out",
     protect,
-    authorize("admin", "manager", "technician"),
+    authorize("admin", "technician"),
     technicianScheduleController.recordCheckOut
   );
-  router.put(
-    "/api/technician-schedules/:id/availability",
-    protect,
-    authorize("admin", "manager", "technician"),
-    technicianScheduleController.updateAvailability
-  );
-  router.post(
-    "/api/technician-schedules/:id/appointments",
-    protect,
-    authorize("admin", "manager"),
-    technicianScheduleController.addAppointmentToSchedule
-  );
-  router.delete(
-    "/api/technician-schedules/:id/appointments/:appointmentId",
-    protect,
-    authorize("admin", "manager"),
-    technicianScheduleController.removeAppointmentFromSchedule
-  );
-  router.get(
-    "/api/service-centers/:centerId/available-technicians",
-    protect,
-    authorize("admin", "manager"),
-    technicianScheduleController.getAvailableTechnicians
-  );
-  router.get(
-    "/api/technician-schedules/reports/overtime",
-    protect,
-    authorize("admin", "manager"),
-    technicianScheduleController.getOvertimeReport
-  );
+
+
+
   // leave requests
   router.post(
     "/api/technicians/:technicianId/leave-request",
@@ -982,18 +895,7 @@ let initWebRoutes = (app) => {
     authorize("technician"),
     technicianScheduleController.requestLeave
   );
-  router.put(
-    "/api/technician-schedules/:scheduleId/leave-request",
-    protect,
-    authorize("admin", "manager", "staff"),
-    technicianScheduleController.processLeaveRequest
-  );
-  router.get(
-    "/api/leave-requests/pending",
-    protect,
-    authorize("admin", "manager", "staff"),
-    technicianScheduleController.getPendingLeaveRequests
-  );
+
   router.get(
     "/api/technicians/:technicianId/leave-history",
     protect,
@@ -1001,53 +903,13 @@ let initWebRoutes = (app) => {
   );
 
   // ===== WORK PROGRESS =====
-  router.get(
-    "/api/work-progress",
-    protect,
-    authorize("admin", "manager"),
-    workProgressTrackingController.getAllProgressRecords
-  );
-  router.get(
-    "/api/work-progress/:id",
-    protect,
-    authorize("admin", "manager", "technician"),
-    workProgressTrackingController.getProgressRecordById
-  );
-  router.post(
-    "/api/work-progress",
-    protect,
-    authorize("admin", "manager", "technician"),
-    workProgressTrackingController.createProgressRecord
-  );
-  router.put(
-    "/api/work-progress/:id",
-    protect,
-    authorize("admin", "manager", "technician"),
-    workProgressTrackingController.updateProgressRecord
-  );
-  router.delete(
-    "/api/work-progress/:id",
-    protect,
-    authorize("admin", "manager"),
-    workProgressTrackingController.deleteProgressRecord
-  );
-  router.get(
-    "/api/technicians/:technicianId/work-progress",
-    protect,
-    authorize("admin", "manager", "technician"),
-    workProgressTrackingController.getProgressRecordsByTechnician
-  );
+
   router.get(
     "/api/appointments/:appointmentId/progress",
     protect,
     workProgressTrackingController.getProgressRecordByAppointment
   );
-  router.put(
-    "/api/work-progress/:id/status",
-    protect,
-    authorize("admin", "manager", "technician"),
-    workProgressTrackingController.updateProgressStatus
-  );
+
   router.post(
     "/api/work-progress/:id/inspection-quote",
     protect,
@@ -1071,60 +933,10 @@ let initWebRoutes = (app) => {
     authorize("technician"),
     workProgressTrackingController.completeMaintenance
   );
-  router.post(
-    "/api/work-progress/:id/process-payment",
-    protect,
-    authorize("admin", "manager", "staff"),
-    workProgressTrackingController.processCashPayment
-  );
-  router.post(
-    "/api/work-progress/:id/milestones",
-    protect,
-    authorize("admin", "manager", "technician"),
-    workProgressTrackingController.addMilestone
-  );
-  router.put(
-    "/api/work-progress/:id/milestones/:milestoneId/complete",
-    protect,
-    authorize("admin", "manager", "technician"),
-    workProgressTrackingController.completeMilestone
-  );
-  router.post(
-    "/api/work-progress/:id/issues",
-    protect,
-    authorize("admin", "manager", "technician"),
-    workProgressTrackingController.reportIssue
-  );
-  router.put(
-    "/api/work-progress/:id/issues/:issueId/resolve",
-    protect,
-    authorize("admin", "manager", "technician"),
-    workProgressTrackingController.resolveIssue
-  );
-  router.post(
-    "/api/work-progress/:id/supervisor-notes",
-    protect,
-    authorize("admin", "manager"),
-    workProgressTrackingController.addSupervisorNotes
-  );
-  router.post(
-    "/api/work-progress/:id/calculate-efficiency",
-    protect,
-    authorize("admin", "manager"),
-    workProgressTrackingController.calculateEfficiency
-  );
-  router.get(
-    "/api/technicians/:technicianId/performance",
-    protect,
-    authorize("admin", "manager"),
-    workProgressTrackingController.getTechnicianPerformance
-  );
-  router.get(
-    "/api/service-centers/:centerId/performance",
-    protect,
-    authorize("admin", "manager"),
-    workProgressTrackingController.getServiceCenterPerformance
-  );
+
+
+
+
 
   // ===== FEEDBACK =====
   router.get(
@@ -1148,53 +960,11 @@ let initWebRoutes = (app) => {
     feedbackController.deleteMyFeedback
   );
 
-  // ===== SYSTEM SETTINGS =====
-  router.get(
-    "/api/settings/policies",
-    protect,
-    authorize("admin", "staff"),
-    systemSettingsController.getPolicies
-  );
-  router.put(
-    "/api/settings/policies",
-    protect,
-    authorize("admin", "staff"),
-    systemSettingsController.updatePolicies
-  );
 
-  // ===== INVENTORY RESERVATIONS =====
-  router.post(
-    "/api/inventory/reservations",
-    protect,
-    authorize("admin", "staff"),
-    inventoryReservationController.hold
-  );
-  router.post(
-    "/api/inventory/reservations/:reservationId/consume",
-    protect,
-    authorize("admin", "staff"),
-    inventoryReservationController.consume
-  );
-  router.post(
-    "/api/inventory/reservations/:reservationId/release",
-    protect,
-    authorize("admin", "staff"),
-    inventoryReservationController.release
-  );
 
-  // ===== INVOICE =====
-  router.post(
-    "/api/invoices/from-appointment/:appointmentId",
-    protect,
-    authorize("admin", "staff"),
-    invoiceController.createFromAppointment
-  );
-  router.post(
-    "/api/invoices/:invoiceId/send-email",
-    protect,
-    authorize("admin", "staff"),
-    invoiceController.sendEmail
-  );
+
+
+
 
   // ===== PARTS =====
   router.get(
