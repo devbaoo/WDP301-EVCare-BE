@@ -304,7 +304,8 @@ let initWebRoutes = (app) => {
     );
 
     // PayOS webhook (public - no auth required)
-    router.post("/api/payment/webhook", paymentController.handleWebhook);
+    // Support both GET (for PayOS test) and POST (for actual webhooks)
+    router.all("/api/payment/webhook", paymentController.handleWebhook);
 
     // PayOS redirect pages (public - no auth required)
     router.get("/payment/success", paymentController.handlePaymentSuccess);
@@ -314,6 +315,18 @@ let initWebRoutes = (app) => {
     router.post(
         "/api/payment/sync/:orderCode",
         paymentController.syncPaymentStatus
+    );
+
+    // Test webhook endpoint (for debugging)
+    router.post(
+        "/api/payment/test-webhook",
+        paymentController.testWebhook
+    );
+
+    // Webhook health check (for PayOS verification)
+    router.all(
+        "/api/payment/webhook/health",
+        paymentController.webhookHealthCheck
     );
 
     // ===== COST ANALYTICS (CUSTOMER) =====

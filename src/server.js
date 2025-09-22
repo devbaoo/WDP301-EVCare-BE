@@ -14,12 +14,10 @@ let app = express();
 viewEngine(app);
 app.use(cors({ origin: true }));
 
-app.use(bodyParser.json({ limit: "50mb" }));
-app.use(bodyParser.urlencoded({ extended: true, limit: "50mb" }));
-app.use(express.static("public"));
-
+// Use express built-in body parsing (more modern than body-parser)
 app.use(express.json({ limit: "50mb" }));
 app.use(express.urlencoded({ extended: true, limit: "50mb" }));
+app.use(express.static("public"));
 
 initWebRoutes(app);
 

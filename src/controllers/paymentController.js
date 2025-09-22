@@ -91,33 +91,108 @@ const getCustomerPayments = async (req, res) => {
 
 // Webhook từ PayOS
 const handleWebhook = async (req, res) => {
+    const startTime = Date.now();
+    const webhookId = `webhook_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`;
+
     try {
         const webhookData = req.body;
+        const headers = req.headers;
 
-        // Verify webhook signature if needed
-        // const signature = req.headers['x-payos-signature'];
-        // if (!verifyWebhookSignature(webhookData, signature)) {
-        //   return res.status(400).json({ success: false, message: "Invalid signature" });
-        // }
+        // Log webhook request for debugging
+        console.log(`[${webhookId}] Webhook received:`, {
+            timestamp: new Date().toISOString(),
+            method: req.method,
+            url: req.url,
+            headers: {
+                'content-type': headers['content-type'],
+                'user-agent': headers['user-agent'],
+                'x-payos-signature': headers['x-payos-signature'] ? 'Present' : 'Missing',
+                'x-payos-event': headers['x-payos-event'] || 'N/A'
+            },
+            body: webhookData
+        });
 
-        const result = await payosService.handleWebhook(webhookData);
-
-        if (result.success) {
+        // Handle PayOS webhook test (GET request)
+        if (req.method === 'GET') {
+            console.log(`[${webhookId}] PayOS webhook test request`);
             return res.status(200).json({
                 success: true,
-                message: "Webhook processed successfully",
-            });
-        } else {
-            return res.status(400).json({
-                success: false,
-                message: result.message,
+                message: "Webhook endpoint is working",
+                timestamp: new Date().toISOString(),
+                webhookId
             });
         }
+
+        // Handle POST webhook with signature verification
+        if (req.method === 'POST') {
+            // Verify webhook signature (PayOS security)
+            const signature = headers['x-payos-signature'];
+            if (!signature) {
+                console.warn(`[${webhookId}] Missing PayOS signature`);
+                return res.status(400).json({
+                    success: false,
+                    message: "Missing webhook signature",
+                    webhookId
+                });
+            }
+
+            // Verify signature using PayOS checksum key
+            const isValidSignature = payosService.verifyWebhookSignature(webhookData, signature);
+            if (!isValidSignature) {
+                console.error(`[${webhookId}] Invalid webhook signature`);
+                return res.status(400).json({
+                    success: false,
+                    message: "Invalid webhook signature",
+                    webhookId
+                });
+            }
+
+            // Process webhook
+            const result = await payosService.handleWebhook(webhookData, webhookId);
+
+            const processingTime = Date.now() - startTime;
+            console.log(`[${webhookId}] Webhook processed in ${processingTime}ms:`, {
+                success: result.success,
+                message: result.message,
+                orderCode: webhookData?.orderCode || webhookData?.data?.orderCode
+            });
+
+            if (result.success) {
+                return res.status(200).json({
+                    success: true,
+                    message: "Webhook processed successfully",
+                    webhookId,
+                    processingTime: `${processingTime}ms`
+                });
+            } else {
+                return res.status(400).json({
+                    success: false,
+                    message: result.message,
+                    webhookId
+                });
+            }
+        }
+
+        // Handle other methods
+        return res.status(405).json({
+            success: false,
+            message: "Method not allowed",
+            webhookId
+        });
+
     } catch (error) {
-        console.error("Handle webhook error:", error);
+        const processingTime = Date.now() - startTime;
+        console.error(`[${webhookId}] Webhook processing failed after ${processingTime}ms:`, {
+            error: error.message,
+            stack: error.stack,
+            body: req.body
+        });
+
         res.status(500).json({
             success: false,
             message: "Webhook processing failed",
+            webhookId,
+            error: process.env.NODE_ENV === 'development' ? error.message : 'Internal server error'
         });
     }
 };
@@ -371,6 +446,81 @@ const syncPaymentStatus = async (req, res) => {
     }
 };
 
+// Test webhook endpoint for debugging
+const testWebhook = async (req, res) => {
+    try {
+        const { orderCode, status = "PAID", amount = 100000 } = req.body;
+
+        if (!orderCode) {
+            return res.status(400).json({
+                success: false,
+                message: "orderCode is required for testing"
+            });
+        }
+
+        // Create test webhook data
+        const testWebhookData = {
+            orderCode: parseInt(orderCode),
+            status: status,
+            amount: amount,
+            fee: 0,
+            netAmount: amount,
+            transactionId: `test_${Date.now()}`,
+            transactionTime: new Date().toISOString(),
+            eventId: `test_event_${Date.now()}`
+        };
+
+        console.log("Testing webhook with data:", testWebhookData);
+
+        // Process test webhook
+        const result = await payosService.handleWebhook(testWebhookData, `test_${Date.now()}`);
+
+        return res.status(200).json({
+            success: true,
+            message: "Test webhook processed",
+            data: {
+                testData: testWebhookData,
+                result: result
+            }
+        });
+
+    } catch (error) {
+        console.error("Test webhook error:", error);
+        res.status(500).json({
+            success: false,
+            message: "Test webhook failed",
+            error: error.message
+        });
+    }
+};
+
+// Simple webhook health check for PayOS verification
+const webhookHealthCheck = async (req, res) => {
+    try {
+        console.log("Webhook health check requested:", {
+            method: req.method,
+            url: req.url,
+            headers: req.headers,
+            timestamp: new Date().toISOString()
+        });
+
+        return res.status(200).json({
+            success: true,
+            message: "Webhook endpoint is healthy",
+            timestamp: new Date().toISOString(),
+            method: req.method,
+            url: req.url
+        });
+    } catch (error) {
+        console.error("Webhook health check error:", error);
+        res.status(500).json({
+            success: false,
+            message: "Webhook health check failed",
+            error: error.message
+        });
+    }
+};
+
 
 export default {
     createBookingPayment,
@@ -381,4 +531,6 @@ export default {
     handlePaymentSuccess,
     handlePaymentCancel,
     syncPaymentStatus,
+    testWebhook,
+    webhookHealthCheck,
 };
