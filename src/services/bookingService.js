@@ -909,6 +909,79 @@ const getPaidAwaitingConfirmation = async (filters = {}) => {
     }
 };
 
+// Danh sách booking đã được confirm (đã xác nhận) để đẩy vào work-progress
+const getConfirmedBookings = async (filters = {}) => {
+    try {
+        const {
+            serviceCenterId,
+            dateFrom,
+            dateTo,
+            page = 1,
+            limit = 10,
+            sortBy = "createdAt",
+            sortOrder = "desc",
+        } = filters;
+
+        const query = {
+            status: "confirmed",
+            $or: [
+                { "confirmation.isConfirmed": true },
+                { "confirmation.confirmedAt": { $exists: true } }
+            ],
+        };
+
+        if (serviceCenterId) query.serviceCenter = serviceCenterId;
+
+        if (dateFrom || dateTo) {
+            query["appointmentTime.date"] = {};
+            if (dateFrom) query["appointmentTime.date"].$gte = new Date(dateFrom);
+            if (dateTo) {
+                const to = new Date(dateTo);
+                to.setHours(23, 59, 59, 999);
+                query["appointmentTime.date"].$lte = to;
+            }
+        }
+
+        const sort = {};
+        sort[sortBy] = sortOrder === "desc" ? -1 : 1;
+
+        const appointments = await Appointment.find(query)
+            .populate([
+                { path: "customer", select: "fullName phone email" },
+                { path: "vehicle", select: "vehicleInfo", populate: { path: "vehicleInfo.vehicleModel", select: "brand modelName" } },
+                { path: "serviceCenter", select: "name address" },
+                { path: "serviceType", select: "name pricing" },
+            ])
+            .sort(sort)
+            .limit(limit * 1)
+            .skip((page - 1) * limit);
+
+        const total = await Appointment.countDocuments(query);
+
+        return {
+            success: true,
+            statusCode: 200,
+            message: "Lấy danh sách booking đã xác nhận thành công",
+            data: {
+                appointments,
+                pagination: {
+                    currentPage: page,
+                    totalPages: Math.ceil(total / limit),
+                    totalItems: total,
+                    itemsPerPage: limit,
+                },
+            },
+        };
+    } catch (error) {
+        console.error("Get confirmed bookings error:", error);
+        return {
+            success: false,
+            statusCode: 500,
+            message: "Lỗi khi lấy danh sách booking đã xác nhận",
+        };
+    }
+};
+
 const confirmBooking = async (bookingId, staffId) => {
     try {
         const appointment = await Appointment.findById(bookingId).populate('serviceCenter');
@@ -953,4 +1026,5 @@ export default {
     rescheduleBooking,
     getBookingDetails,
     getPaidAwaitingConfirmation,
+    getConfirmedBookings,
 };
