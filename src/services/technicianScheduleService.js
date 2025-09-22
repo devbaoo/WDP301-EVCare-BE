@@ -693,14 +693,14 @@ const technicianScheduleService = {
   },
 
   // Phê duyệt hoặc từ chối yêu cầu xin nghỉ
-  processLeaveRequest: async (scheduleId, managerId, action) => {
+  processLeaveRequest: async (scheduleId, staffId, action) => {
     try {
       if (!mongoose.Types.ObjectId.isValid(scheduleId)) {
         throw new Error("Invalid schedule ID");
       }
 
-      if (!mongoose.Types.ObjectId.isValid(managerId)) {
-        throw new Error("Invalid manager ID");
+      if (!mongoose.Types.ObjectId.isValid(staffId)) {
+        throw new Error("Invalid staff ID");
       }
 
       // Kiểm tra action hợp lệ
@@ -726,7 +726,7 @@ const technicianScheduleService = {
       // Cập nhật trạng thái yêu cầu xin nghỉ
       schedule.leaveRequest.status =
         action === "approve" ? "approved" : "rejected";
-      schedule.leaveRequest.approvedBy = managerId;
+      schedule.leaveRequest.approvedBy = staffId;
       schedule.leaveRequest.approvedAt = new Date();
 
       // Nếu phê duyệt, cập nhật trạng thái lịch làm việc
@@ -757,7 +757,7 @@ const technicianScheduleService = {
         // Cập nhật tất cả lịch làm việc khác
         for (const otherSchedule of otherSchedules) {
           otherSchedule.leaveRequest.status = "approved";
-          otherSchedule.leaveRequest.approvedBy = managerId;
+          otherSchedule.leaveRequest.approvedBy = staffId;
           otherSchedule.leaveRequest.approvedAt = new Date();
           otherSchedule.status = "on_leave";
           otherSchedule.availability = "unavailable";

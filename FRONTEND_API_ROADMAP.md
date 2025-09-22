@@ -72,10 +72,10 @@ Tài liệu này cung cấp lộ trình phát triển frontend dựa trên các 
 | ------------------------------------------------------ | ------ | ------------------------------------- | -------------- |
 | `/api/service-centers/:id/services`                    | POST   | Thêm dịch vụ vào trung tâm            | Admin          |
 | `/api/service-centers/:id/staff`                       | POST   | Thêm nhân viên vào trung tâm          | Admin          |
-| `/api/service-centers/:centerId/staff`                 | GET    | Lấy danh sách nhân viên của trung tâm | Admin, Manager |
-| `/api/service-centers/:centerId/schedules`             | GET    | Lấy lịch của trung tâm                | Admin, Manager |
-| `/api/service-centers/:centerId/available-technicians` | GET    | Lấy danh sách kỹ thuật viên có sẵn    | Admin, Manager |
-| `/api/service-centers/:centerId/performance`           | GET    | Lấy hiệu suất của trung tâm           | Admin, Manager |
+| `/api/service-centers/:centerId/staff`                 | GET    | Lấy danh sách nhân viên của trung tâm | Admin, Staff   |
+| `/api/service-centers/:centerId/schedules`             | GET    | Lấy lịch của trung tâm                | Admin, Staff   |
+| `/api/service-centers/:centerId/available-technicians` | GET    | Lấy danh sách kỹ thuật viên có sẵn    | Admin, Staff   |
+| `/api/service-centers/:centerId/performance`           | GET    | Lấy hiệu suất của trung tâm           | Admin, Staff   |
 
 ## 🔧 Loại dịch vụ (Service Types)
 
@@ -167,65 +167,65 @@ Tài liệu này cung cấp lộ trình phát triển frontend dựa trên các 
 
 | Endpoint                                                      | Method | Mô tả                           | Quyền truy cập |
 | ------------------------------------------------------------- | ------ | ------------------------------- | -------------- |
-| `/api/technician-certificates`                                | GET    | Lấy danh sách chứng chỉ         | Admin, Manager |
-| `/api/technician-certificates/:id`                            | GET    | Lấy thông tin chứng chỉ theo ID | Admin, Manager |
-| `/api/technician-certificates`                                | POST   | Tạo chứng chỉ mới               | Admin, Manager |
-| `/api/technician-certificates/:id`                            | PUT    | Cập nhật chứng chỉ              | Admin, Manager |
+| `/api/technician-certificates`                                | GET    | Lấy danh sách chứng chỉ         | Admin, Staff   |
+| `/api/technician-certificates/:id`                            | GET    | Lấy thông tin chứng chỉ theo ID | Admin, Staff   |
+| `/api/technician-certificates`                                | POST   | Tạo chứng chỉ mới               | Admin, Staff   |
+| `/api/technician-certificates/:id`                            | PUT    | Cập nhật chứng chỉ              | Admin, Staff   |
 | `/api/technician-certificates/:id`                            | DELETE | Xóa chứng chỉ                   | Admin          |
-| `/api/technician-certificates/:id/status`                     | PUT    | Cập nhật trạng thái chứng chỉ   | Admin, Manager |
+| `/api/technician-certificates/:id/status`                     | PUT    | Cập nhật trạng thái chứng chỉ   | Admin, Staff   |
 | `/api/technicians/:technicianId/certificates`                 | GET    | Lấy chứng chỉ của kỹ thuật viên | Authenticated  |
-| `/api/technician-certificates/specialization/:specialization` | GET    | Lấy chứng chỉ theo chuyên môn   | Admin, Manager |
-| `/api/technician-certificates/expiry/check`                   | GET    | Kiểm tra chứng chỉ hết hạn      | Admin, Manager |
-| `/api/technician-certificates/expiry/soon`                    | GET    | Lấy chứng chỉ sắp hết hạn       | Admin, Manager |
+| `/api/technician-certificates/specialization/:specialization` | GET    | Lấy chứng chỉ theo chuyên môn   | Admin, Staff   |
+| `/api/technician-certificates/expiry/check`                   | GET    | Kiểm tra chứng chỉ hết hạn      | Admin, Staff   |
+| `/api/technician-certificates/expiry/soon`                    | GET    | Lấy chứng chỉ sắp hết hạn       | Admin, Staff   |
 
 ### Lịch trình kỹ thuật viên (Technician Schedules)
 
-| Endpoint                                                    | Method | Mô tả                            | Quyền truy cập             |
-| ----------------------------------------------------------- | ------ | -------------------------------- | -------------------------- |
-| `/api/technician-schedules`                                 | GET    | Lấy danh sách lịch trình         | Admin, Manager             |
-| `/api/technician-schedules/:id`                             | GET    | Lấy thông tin lịch trình theo ID | Admin, Manager, Technician |
-| `/api/technician-schedules`                                 | POST   | Tạo lịch trình mới               | Admin, Manager             |
-| `/api/technician-schedules/:id`                             | PUT    | Cập nhật lịch trình              | Admin, Manager             |
-| `/api/technician-schedules/:id`                             | DELETE | Xóa lịch trình                   | Admin, Manager             |
-| `/api/technicians/:technicianId/schedules`                  | GET    | Lấy lịch trình của kỹ thuật viên | Authenticated              |
-| `/api/technician-schedules/:id/status`                      | PUT    | Cập nhật trạng thái lịch trình   | Admin, Manager, Technician |
-| `/api/technician-schedules/:id/check-in`                    | POST   | Ghi nhận check-in                | Admin, Manager, Technician |
-| `/api/technician-schedules/:id/check-out`                   | POST   | Ghi nhận check-out               | Admin, Manager, Technician |
-| `/api/technician-schedules/:id/availability`                | PUT    | Cập nhật tình trạng sẵn sàng     | Admin, Manager, Technician |
-| `/api/technician-schedules/:id/appointments`                | POST   | Thêm lịch hẹn vào lịch trình     | Admin, Manager             |
-| `/api/technician-schedules/:id/appointments/:appointmentId` | DELETE | Xóa lịch hẹn khỏi lịch trình     | Admin, Manager             |
-| `/api/technician-schedules/reports/overtime`                | GET    | Lấy báo cáo làm thêm giờ         | Admin, Manager             |
+| Endpoint                                                    | Method | Mô tả                            | Quyền truy cập           |
+| ----------------------------------------------------------- | ------ | -------------------------------- | ------------------------ |
+| `/api/technician-schedules`                                 | GET    | Lấy danh sách lịch trình         | Admin, Staff             |
+| `/api/technician-schedules/:id`                             | GET    | Lấy thông tin lịch trình theo ID | Admin, Staff, Technician |
+| `/api/technician-schedules`                                 | POST   | Tạo lịch trình mới               | Admin, Staff             |
+| `/api/technician-schedules/:id`                             | PUT    | Cập nhật lịch trình              | Admin, Staff             |
+| `/api/technician-schedules/:id`                             | DELETE | Xóa lịch trình                   | Admin, Staff             |
+| `/api/technicians/:technicianId/schedules`                  | GET    | Lấy lịch trình của kỹ thuật viên | Authenticated            |
+| `/api/technician-schedules/:id/status`                      | PUT    | Cập nhật trạng thái lịch trình   | Admin, Staff, Technician |
+| `/api/technician-schedules/:id/check-in`                    | POST   | Ghi nhận check-in                | Admin, Staff, Technician |
+| `/api/technician-schedules/:id/check-out`                   | POST   | Ghi nhận check-out               | Admin, Staff, Technician |
+| `/api/technician-schedules/:id/availability`                | PUT    | Cập nhật tình trạng sẵn sàng     | Admin, Staff, Technician |
+| `/api/technician-schedules/:id/appointments`                | POST   | Thêm lịch hẹn vào lịch trình     | Admin, Staff             |
+| `/api/technician-schedules/:id/appointments/:appointmentId` | DELETE | Xóa lịch hẹn khỏi lịch trình     | Admin, Staff             |
+| `/api/technician-schedules/reports/overtime`                | GET    | Lấy báo cáo làm thêm giờ         | Admin, Staff             |
 
 ## 👥 Phân công nhân viên (Staff Assignment)
 
 | Endpoint                              | Method | Mô tả                           | Quyền truy cập |
 | ------------------------------------- | ------ | ------------------------------- | -------------- |
-| `/api/staff-assignments`              | GET    | Lấy danh sách phân công         | Admin, Manager |
-| `/api/staff-assignments/:id`          | GET    | Lấy thông tin phân công theo ID | Admin, Manager |
+| `/api/staff-assignments`              | GET    | Lấy danh sách phân công         | Admin, Staff   |
+| `/api/staff-assignments/:id`          | GET    | Lấy thông tin phân công theo ID | Admin, Staff   |
 | `/api/staff-assignments`              | POST   | Tạo phân công mới               | Admin          |
 | `/api/staff-assignments/:id`          | PUT    | Cập nhật phân công              | Admin          |
 | `/api/staff-assignments/:id`          | DELETE | Xóa phân công                   | Admin          |
-| `/api/staff-assignments/:id/position` | PUT    | Cập nhật vị trí nhân viên       | Admin, Manager |
+| `/api/staff-assignments/:id/position` | PUT    | Cập nhật vị trí nhân viên       | Admin, Staff   |
 | `/api/users/:userId/centers`          | GET    | Lấy trung tâm của nhân viên     | Authenticated  |
 
 ## 📊 Theo dõi tiến độ công việc (Work Progress Tracking)
 
-| Endpoint                                                  | Method | Mô tả                           | Quyền truy cập             |
-| --------------------------------------------------------- | ------ | ------------------------------- | -------------------------- |
-| `/api/work-progress`                                      | GET    | Lấy danh sách tiến độ           | Admin, Manager             |
-| `/api/work-progress/:id`                                  | GET    | Lấy thông tin tiến độ theo ID   | Admin, Manager, Technician |
-| `/api/work-progress`                                      | POST   | Tạo tiến độ mới                 | Admin, Manager, Technician |
-| `/api/work-progress/:id`                                  | PUT    | Cập nhật tiến độ                | Admin, Manager, Technician |
-| `/api/work-progress/:id`                                  | DELETE | Xóa tiến độ                     | Admin, Manager             |
-| `/api/technicians/:technicianId/work-progress`            | GET    | Lấy tiến độ của kỹ thuật viên   | Admin, Manager, Technician |
-| `/api/work-progress/:id/status`                           | PUT    | Cập nhật trạng thái tiến độ     | Admin, Manager, Technician |
-| `/api/work-progress/:id/milestones`                       | POST   | Thêm mốc tiến độ                | Admin, Manager, Technician |
-| `/api/work-progress/:id/milestones/:milestoneId/complete` | PUT    | Hoàn thành mốc tiến độ          | Admin, Manager, Technician |
-| `/api/work-progress/:id/issues`                           | POST   | Báo cáo vấn đề                  | Admin, Manager, Technician |
-| `/api/work-progress/:id/issues/:issueId/resolve`          | PUT    | Giải quyết vấn đề               | Admin, Manager, Technician |
-| `/api/work-progress/:id/supervisor-notes`                 | POST   | Thêm ghi chú của giám sát       | Admin, Manager             |
-| `/api/work-progress/:id/calculate-efficiency`             | POST   | Tính toán hiệu suất             | Admin, Manager             |
-| `/api/technicians/:technicianId/performance`              | GET    | Lấy hiệu suất của kỹ thuật viên | Admin, Manager             |
+| Endpoint                                                  | Method | Mô tả                           | Quyền truy cập           |
+| --------------------------------------------------------- | ------ | ------------------------------- | ------------------------ |
+| `/api/work-progress`                                      | GET    | Lấy danh sách tiến độ           | Admin, Staff             |
+| `/api/work-progress/:id`                                  | GET    | Lấy thông tin tiến độ theo ID   | Admin, Staff, Technician |
+| `/api/work-progress`                                      | POST   | Tạo tiến độ mới                 | Admin, Staff, Technician |
+| `/api/work-progress/:id`                                  | PUT    | Cập nhật tiến độ                | Admin, Staff, Technician |
+| `/api/work-progress/:id`                                  | DELETE | Xóa tiến độ                     | Admin, Staff             |
+| `/api/technicians/:technicianId/work-progress`            | GET    | Lấy tiến độ của kỹ thuật viên   | Admin, Staff, Technician |
+| `/api/work-progress/:id/status`                           | PUT    | Cập nhật trạng thái tiến độ     | Admin, Staff, Technician |
+| `/api/work-progress/:id/milestones`                       | POST   | Thêm mốc tiến độ                | Admin, Staff, Technician |
+| `/api/work-progress/:id/milestones/:milestoneId/complete` | PUT    | Hoàn thành mốc tiến độ          | Admin, Staff, Technician |
+| `/api/work-progress/:id/issues`                           | POST   | Báo cáo vấn đề                  | Admin, Staff, Technician |
+| `/api/work-progress/:id/issues/:issueId/resolve`          | PUT    | Giải quyết vấn đề               | Admin, Staff, Technician |
+| `/api/work-progress/:id/supervisor-notes`                 | POST   | Thêm ghi chú của giám sát       | Admin, Staff             |
+| `/api/work-progress/:id/calculate-efficiency`             | POST   | Tính toán hiệu suất             | Admin, Staff             |
+| `/api/technicians/:technicianId/performance`              | GET    | Lấy hiệu suất của kỹ thuật viên | Admin, Staff             |
 
 ## 📊 Quy trình kiểm tra và báo giá (Inspection & Quote)
 
@@ -235,7 +235,7 @@ Tài liệu này cung cấp lộ trình phát triển frontend dựa trên các 
 | `/api/work-progress/:id/quote-response`       | PUT    | Phản hồi báo giá (chấp nhận/từ chối) | Authenticated (Customer) |
 | `/api/work-progress/:id/start-maintenance`    | POST   | Bắt đầu bảo dưỡng sau khi chấp nhận  | Technician               |
 | `/api/work-progress/:id/complete-maintenance` | POST   | Hoàn thành bảo dưỡng                 | Technician               |
-| `/api/work-progress/:id/process-payment`      | POST   | Xử lý thanh toán tiền mặt            | Admin, Manager, Staff    |
+| `/api/work-progress/:id/process-payment`      | POST   | Xử lý thanh toán tiền mặt            | Admin, Staff             |
 
 ## 🚨 Xử lý lỗi
 
@@ -291,7 +291,7 @@ Authorization: Bearer <access_token>
    - Nhận thông báo khi hoàn thành
    - Phản hồi báo giá (nếu có)
 
-### 2. Luồng quản lý (Admin/Manager Flow)
+### 2. Luồng quản lý (Admin/Staff Flow)
 
 1. **Quản lý trung tâm dịch vụ**
 
@@ -370,7 +370,7 @@ Authorization: Bearer <access_token>
 - Hủy đặt lịch
 - Phản hồi báo giá (chấp nhận/từ chối)
 
-### 6. Trang quản lý (Admin/Manager)
+### 6. Trang quản lý (Admin/Staff)
 
 - Dashboard tổng quan
 - Quản lý trung tâm dịch vụ

@@ -59,12 +59,21 @@ const staffAssignmentService = {
         throw new Error("User is already assigned to this service center");
       }
 
+      // Update user role based on position
+      if (assignmentData.position === "technician") {
+        await User.findByIdAndUpdate(assignmentData.userId, {
+          role: "technician",
+        });
+      } else if (assignmentData.position === "staff") {
+        await User.findByIdAndUpdate(assignmentData.userId, { role: "staff" });
+      }
+
       // Create new assignment
       const newAssignment = new StaffAssignment(assignmentData);
       await newAssignment.save();
 
       return await StaffAssignment.findById(newAssignment._id)
-        .populate("userId", "firstName lastName email phoneNumber avatar")
+        .populate("userId", "firstName lastName email phoneNumber avatar role")
         .populate("centerId", "name address location");
     } catch (error) {
       throw new Error(`Error creating staff assignment: ${error.message}`);
@@ -99,8 +108,18 @@ const staffAssignmentService = {
         throw new Error("Invalid assignment ID");
       }
 
-      const assignment = await StaffAssignment.findByIdAndDelete(id);
-      return assignment;
+      // Find the assignment first to get user details
+      const assignment = await StaffAssignment.findById(id);
+      if (!assignment) {
+        return null;
+      }
+
+      // Reset user role to customer when removing from service center
+      await User.findByIdAndUpdate(assignment.userId, { role: "customer" });
+
+      // Delete the assignment
+      const deletedAssignment = await StaffAssignment.findByIdAndDelete(id);
+      return deletedAssignment;
     } catch (error) {
       throw new Error(`Error deleting staff assignment: ${error.message}`);
     }
@@ -160,11 +179,9 @@ const staffAssignmentService = {
       }
 
       // Validate position
-      const validPositions = ["manager", "staff", "technician"];
+      const validPositions = ["staff", "technician"];
       if (!validPositions.includes(position)) {
-        throw new Error(
-          "Invalid position. Must be one of: manager, staff, technician"
-        );
+        throw new Error("Invalid position. Must be one of: staff, technician");
       }
 
       const assignment = await StaffAssignment.findByIdAndUpdate(

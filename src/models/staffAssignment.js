@@ -14,7 +14,7 @@ const StaffAssignmentSchema = new mongoose.Schema(
     },
     position: {
       type: String,
-      enum: ["manager", "staff", "technician"],
+      enum: ["staff", "technician"],
       maxlength: 50,
       required: true,
     },

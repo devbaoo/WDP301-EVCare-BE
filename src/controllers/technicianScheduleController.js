@@ -541,7 +541,7 @@ const technicianScheduleController = {
     try {
       const { scheduleId } = req.params;
       const { action } = req.body;
-      const managerId = req.user.id; // Lấy ID của người quản lý từ token xác thực
+      const staffId = req.user.id; // Lấy ID của nhân viên từ token xác thực
 
       if (!action || (action !== "approve" && action !== "reject")) {
         return res.status(400).json({
@@ -553,7 +553,7 @@ const technicianScheduleController = {
       const updatedSchedule =
         await technicianScheduleService.processLeaveRequest(
           scheduleId,
-          managerId,
+          staffId,
           action
         );
 

@@ -4,7 +4,7 @@ Lưu ý chung
 
 - Tất cả endpoint base: http://localhost:8080 (điều chỉnh theo server của bạn)
 - Gửi header Authorization: Bearer <JWT> cho các route yêu cầu xác thực
-- Vai trò: Customer tạo booking; Admin/Manager confirm; Technician/Manager thực hiện quy trình bảo dưỡng
+- Vai trò: Customer tạo booking; Admin/Staff confirm; Technician/Staff thực hiện quy trình bảo dưỡng
 
 ### 0) Chuẩn bị
 
@@ -20,7 +20,7 @@ POST /api/auth/login
 
 - Lưu `accessToken` để dùng cho các request của Customer
 
-2. (Tuỳ chọn) Cấu hình chính sách hệ thống (Admin/Manager)
+2. (Tuỳ chọn) Cấu hình chính sách hệ thống (Admin/Staff)
 
 ```
 PUT /api/settings/policies
@@ -92,7 +92,7 @@ POST /api/payment/webhook
 
 ```
 POST /api/booking/:bookingId/confirm
-Authorization: Bearer <admin_or_manager_token>
+Authorization: Bearer <admin_or_staff_token>
 ```
 
 - Nếu booking có upfront (amount>0) nhưng `payment.status != paid` → 400 "Chưa thanh toán đặt cọc/phí kiểm tra"
@@ -101,7 +101,7 @@ Authorization: Bearer <admin_or_manager_token>
 
 ```
 POST /api/work-progress
-Authorization: Bearer <technician_token|manager_token>
+Authorization: Bearer <technician_token|staff_token>
 {
   "technicianId": "<techUserId>",
   "appointmentId": "<appointmentId>",
@@ -115,7 +115,7 @@ Lưu `workProgressId` để dùng các bước tiếp theo
 
 ```
 POST /api/work-progress/:id/inspection-quote
-Authorization: Bearer <technician_token|manager_token>
+Authorization: Bearer <technician_token|staff_token>
 {
   "vehicleCondition": "Ổn định",
   "diagnosisDetails": "Cần thay dầu và lọc",
@@ -149,14 +149,14 @@ Authorization: Bearer <customer_token>
 
 ```
 POST /api/work-progress/:id/start-maintenance
-Authorization: Bearer <technician_token|manager_token>
+Authorization: Bearer <technician_token|staff_token>
 ```
 
 ### 7) Technician – Hoàn tất bảo dưỡng
 
 ```
 POST /api/work-progress/:id/complete-maintenance
-Authorization: Bearer <technician_token|manager_token>
+Authorization: Bearer <technician_token|staff_token>
 {
   "notes": "Đã thay dầu/lọc",
   "workDone": "Thay dầu, thay lọc",
@@ -170,7 +170,7 @@ Authorization: Bearer <technician_token|manager_token>
 
 ```
 POST /api/work-progress/:id/process-payment
-Authorization: Bearer <admin|manager|staff_token>
+Authorization: Bearer <admin|staff_token>
 {
   "staffId": "<staffUserId>",
   "paidAmount": 500000,

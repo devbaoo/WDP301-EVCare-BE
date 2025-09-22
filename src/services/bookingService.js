@@ -819,7 +819,7 @@ const getBookingDetails = async (bookingId, customerId) => {
     }
 };
 
-// Danh sách booking đã thanh toán và đang chờ admin/manager xác nhận
+// Danh sách booking đã thanh toán và đang chờ admin/staff xác nhận
 const getPaidAwaitingConfirmation = async (filters = {}) => {
     try {
         const {
