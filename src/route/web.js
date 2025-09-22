@@ -265,8 +265,15 @@ let initWebRoutes = (app) => {
     router.post(
         "/api/booking/:bookingId/confirm",
         protect,
-        authorize("admin", "manager"),
+        authorize("admin", "staff"),
         bookingController.confirmBooking
+    );
+    // Admin/Manager: danh sách booking đã thanh toán và chờ xác nhận
+    router.get(
+        "/api/booking/awaiting-confirmation",
+        protect,
+        authorize("admin", "staff"),
+        bookingController.getPaidAwaitingConfirmation
     );
     router.put(
         "/api/booking/:bookingId/cancel",

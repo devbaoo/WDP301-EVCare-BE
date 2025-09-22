@@ -119,6 +119,31 @@ const confirmBooking = async (req, res) => {
     }
 };
 
+// Lấy các booking đã thanh toán và chờ xác nhận (admin/manager)
+const getPaidAwaitingConfirmation = async (req, res) => {
+    try {
+        const filters = {
+            serviceCenterId: req.query.serviceCenterId,
+            dateFrom: req.query.dateFrom,
+            dateTo: req.query.dateTo,
+            page: Number(req.query.page || 1),
+            limit: Number(req.query.limit || 10),
+            sortBy: req.query.sortBy || "createdAt",
+            sortOrder: req.query.sortOrder || "desc",
+        };
+
+        const result = await bookingService.getPaidAwaitingConfirmation(filters);
+        return res.status(result.statusCode).json({
+            success: result.success,
+            message: result.message,
+            data: result.data,
+        });
+    } catch (error) {
+        console.error("Get paid awaiting confirmation error:", error);
+        res.status(500).json({ success: false, message: "Server error" });
+    }
+};
+
 // Lấy danh sách booking của customer
 const getCustomerBookings = async (req, res) => {
     try {
@@ -219,6 +244,7 @@ export default {
     getAvailableSlots,
     createBooking,
     confirmBooking,
+    getPaidAwaitingConfirmation,
     getCustomerBookings,
     cancelBooking,
     rescheduleBooking,
