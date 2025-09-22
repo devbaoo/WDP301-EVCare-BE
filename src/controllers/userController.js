@@ -130,10 +130,29 @@ const updateUserRole = async (req, res) => {
   }
 };
 
+// Get all staff (staff, technician, admin)
+const getAllStaff = async (req, res) => {
+  try {
+    const result = await userService.getAllStaff();
+    return res.status(result.statusCode).json({
+      success: result.success,
+      message: result.message,
+      staff: result.staff,
+    });
+  } catch (error) {
+    console.error("Get all staff error:", error);
+    res.status(500).json({
+      success: false,
+      message: "Server error",
+    });
+  }
+};
+
 export default {
   getUserProfile,
   updateUserProfile,
   uploadAvatar,
   deleteUser,
   updateUserRole,
+  getAllStaff,
 };
