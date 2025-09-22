@@ -832,10 +832,25 @@ const getPaidAwaitingConfirmation = async (filters = {}) => {
             sortOrder = "desc",
         } = filters;
 
+        // Awaiting confirmation logic:
+        // - Payment is PAID
+        // - Not yet confirmed by admin/manager (confirmation.isConfirmed = false)
+        // - Status may be either pending_confirmation or already set to confirmed by payment flow
         const query = {
-            status: "pending_confirmation",
             "payment.status": "paid",
+            $or: [
+                { status: "pending_confirmation" },
+                { status: "confirmed" }
+            ],
+            $orAdditional: []
         };
+
+        // Enforce not confirmed flag (support missing confirmation object)
+        // We cannot use two $or at the same level directly, so merge after building
+        const notConfirmedOrMissing = [
+            { "confirmation.isConfirmed": { $ne: true } },
+            { confirmation: { $exists: false } }
+        ];
 
         if (serviceCenterId) query.serviceCenter = serviceCenterId;
 
@@ -852,7 +867,12 @@ const getPaidAwaitingConfirmation = async (filters = {}) => {
         const sort = {};
         sort[sortBy] = sortOrder === "desc" ? -1 : 1;
 
-        const appointments = await Appointment.find(query)
+        // Merge second OR into query
+        const finalQuery = { ...query };
+        delete finalQuery.$orAdditional;
+        finalQuery.$and = [{ $or: query.$or }, { $or: notConfirmedOrMissing }];
+
+        const appointments = await Appointment.find(finalQuery)
             .populate([
                 { path: "customer", select: "fullName phone email" },
                 { path: "vehicle", select: "vehicleInfo", populate: { path: "vehicleInfo.vehicleModel", select: "brand modelName" } },
@@ -863,7 +883,7 @@ const getPaidAwaitingConfirmation = async (filters = {}) => {
             .limit(limit * 1)
             .skip((page - 1) * limit);
 
-        const total = await Appointment.countDocuments(query);
+        const total = await Appointment.countDocuments(finalQuery);
 
         return {
             success: true,
