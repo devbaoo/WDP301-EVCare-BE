@@ -20,6 +20,9 @@ import systemSettingsController from "../controllers/systemSettingsController.js
 import inventoryReservationController from "../controllers/inventoryReservationController.js";
 import invoiceController from "../controllers/invoiceController.js";
 import vehicleController from "../controllers/vehicleController.js";
+import partController from "../controllers/partController.js";
+import inventoryController from "../controllers/inventoryController.js";
+import aiPredictionController from "../controllers/aiPredictionController.js";
 import { protect, authorize } from "../middleware/authMiddleware.js";
 
 // Configure multer for file uploads
@@ -1791,6 +1794,146 @@ let initWebRoutes = (app) => {
     protect,
     authorize("admin", "manager"),
     invoiceController.sendEmail
+  );
+
+  // ===== PARTS MANAGEMENT ROUTES =====
+
+  // Part management routes (protected by role)
+  router.get(
+    "/api/parts",
+    protect,
+    authorize("admin", "manager", "staff"),
+    partController.getAllParts
+  );
+  router.get(
+    "/api/parts/:id",
+    protect,
+    authorize("admin", "manager", "staff"),
+    partController.getPartById
+  );
+  router.get(
+    "/api/parts/category/:category",
+    protect,
+    authorize("admin", "manager", "staff"),
+    partController.getPartsByCategory
+  );
+  router.get(
+    "/api/vehicle-models/:vehicleModelId/compatible-parts",
+    protect,
+    authorize("admin", "manager", "staff", "technician"),
+    partController.getCompatibleParts
+  );
+
+  // Part creation and management (admin and manager only)
+  router.post(
+    "/api/parts",
+    protect,
+    authorize("admin", "manager"),
+    partController.createPart
+  );
+  router.put(
+    "/api/parts/:id",
+    protect,
+    authorize("admin", "manager"),
+    partController.updatePart
+  );
+  router.delete(
+    "/api/parts/:id",
+    protect,
+    authorize("admin"),
+    partController.deletePart
+  );
+
+  // ===== INVENTORY MANAGEMENT ROUTES =====
+
+  // Inventory management routes (protected by role)
+  router.get(
+    "/api/inventory",
+    protect,
+    authorize("admin", "manager", "staff"),
+    inventoryController.getAllInventory
+  );
+  router.get(
+    "/api/inventory/:id",
+    protect,
+    authorize("admin", "manager", "staff"),
+    inventoryController.getInventoryById
+  );
+  router.get(
+    "/api/inventory/alerts/low-stock",
+    protect,
+    authorize("admin", "manager", "staff"),
+    inventoryController.getLowStockAlerts
+  );
+  router.get(
+    "/api/service-centers/:centerId/inventory-stats",
+    protect,
+    authorize("admin", "manager", "staff"),
+    inventoryController.getInventoryStats
+  );
+
+  // Inventory creation and management (admin and manager only)
+  router.post(
+    "/api/inventory",
+    protect,
+    authorize("admin", "manager"),
+    inventoryController.createInventory
+  );
+  router.put(
+    "/api/inventory/:id",
+    protect,
+    authorize("admin", "manager"),
+    inventoryController.updateInventory
+  );
+
+  // Inventory transactions (staff can create transactions)
+  router.post(
+    "/api/inventory/transactions",
+    protect,
+    authorize("admin", "manager", "staff"),
+    inventoryController.createTransaction
+  );
+  router.get(
+    "/api/inventory/transactions",
+    protect,
+    authorize("admin", "manager", "staff"),
+    inventoryController.getTransactions
+  );
+
+  // ===== AI PREDICTION ROUTES =====
+
+  // AI prediction routes (protected by role)
+  router.get(
+    "/api/ai/predictions",
+    protect,
+    authorize("admin", "manager", "staff"),
+    aiPredictionController.getAllPredictions
+  );
+  router.get(
+    "/api/ai/predictions/:id",
+    protect,
+    authorize("admin", "manager", "staff"),
+    aiPredictionController.getPredictionById
+  );
+
+  // Generate predictions (admin and manager only)
+  router.post(
+    "/api/ai/demand-forecast",
+    protect,
+    authorize("admin", "manager"),
+    aiPredictionController.generateDemandForecast
+  );
+  router.post(
+    "/api/ai/stock-optimization",
+    protect,
+    authorize("admin", "manager"),
+    aiPredictionController.generateStockOptimization
+  );
+  router.post(
+    "/api/ai/apply-recommendations",
+    protect,
+    authorize("admin", "manager"),
+    aiPredictionController.applyRecommendations
   );
 
   // ===== HEALTH CHECK =====
