@@ -369,7 +369,7 @@ const handleWebhook = async (webhookData, webhookId = null) => {
 
         // Normalize payload (PayOS có thể bọc trong data)
         const payload = webhookData?.data && typeof webhookData.data === 'object' ? webhookData.data : webhookData;
-        let { orderCode, status, transactionTime, amount, fee, netAmount, eventId, transactionId } = payload;
+        let { orderCode, status, transactionTime, amount, fee, netAmount, eventId, transactionId, id } = payload;
 
         // Validate required fields
         if (!orderCode) {
@@ -382,7 +382,7 @@ const handleWebhook = async (webhookData, webhookId = null) => {
         }
 
         // Coerce types
-        const numericOrderCode = parseInt(orderCode, 10);
+        const numericOrderCode = orderCode !== undefined ? parseInt(orderCode, 10) : NaN;
         const numericAmount = amount !== undefined ? Number(amount) : undefined;
         const numericFee = fee !== undefined ? Number(fee) : 0;
         const numericNet = netAmount !== undefined ? Number(netAmount) : (numericAmount !== undefined ? numericAmount - numericFee : undefined);
@@ -401,22 +401,32 @@ const handleWebhook = async (webhookData, webhookId = null) => {
         const finalStatus = statusMap[normalizedStatus] || normalizedStatus;
 
         console.log(`[${webhookId || 'webhook'}] Normalized webhook data:`, {
-            orderCode: numericOrderCode,
+            orderCode: isNaN(numericOrderCode) ? null : numericOrderCode,
             status: finalStatus,
             amount: numericAmount,
-            transactionId
+            transactionId,
+            paymentLinkId: id || payload?.paymentLinkId || null
         });
 
-        // Find payment by order code
-        const payment = await Payment.findOne({
-            "payosInfo.orderCode": numericOrderCode,
-        }).populate('appointment', 'status serviceType serviceCenter customer');
+        // Find payment by order code or by paymentLinkId when orderCode is missing
+        let paymentQuery = null;
+        if (!isNaN(numericOrderCode)) {
+            paymentQuery = { "payosInfo.orderCode": numericOrderCode };
+        } else if (id) {
+            paymentQuery = { "payosInfo.paymentLinkId": id };
+        }
+
+        const payment = await Payment.findOne(paymentQuery || {}).populate('appointment', 'status serviceType serviceCenter customer');
 
         if (!payment) {
-            console.error(`[${webhookId || 'webhook'}] Payment not found for orderCode: ${numericOrderCode}`);
+            console.error(`[${webhookId || 'webhook'}] Payment not found`, {
+                byOrderCode: !isNaN(numericOrderCode) ? numericOrderCode : null,
+                byPaymentLinkId: id || null,
+                payloadKeys: Object.keys(payload || {})
+            });
             return {
                 success: false,
-                message: `Payment not found for orderCode: ${numericOrderCode}`,
+                message: `Payment not found by orderCode/paymentLinkId`,
                 webhookId
             };
         }

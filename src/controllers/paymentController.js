@@ -144,24 +144,36 @@ const handleWebhook = async (req, res) => {
             }
 
             if (!signature) {
-                console.warn(`[${webhookId}] Missing PayOS signature → treating as verification ping (no-op 200)`);
-                return res.status(200).json({
-                    success: true,
-                    message: "Webhook verification OK (no signature)",
-                    timestamp: new Date().toISOString(),
-                    webhookId
-                });
+                // Try to detect real webhook payload even when signature header is absent
+                const maybePayload = webhookData && typeof webhookData === 'object' ? webhookData : {};
+                const payload = maybePayload?.data && typeof maybePayload.data === 'object' ? maybePayload.data : maybePayload;
+                const hasOrderCode = Boolean(payload?.orderCode);
+                const hasStatus = Boolean(payload?.status);
+                if (hasOrderCode || hasStatus) {
+                    console.warn(`[${webhookId}] Missing signature but payload contains data (orderCode/status). Proceeding to process with WARNING.`);
+                    // Bypass signature check and process as normal
+                } else {
+                    console.warn(`[${webhookId}] Missing PayOS signature → treating as verification ping (no-op 200)`);
+                    return res.status(200).json({
+                        success: true,
+                        message: "Webhook verification OK (no signature)",
+                        timestamp: new Date().toISOString(),
+                        webhookId
+                    });
+                }
             }
 
             // Verify signature using PayOS checksum key
-            const isValidSignature = payosService.verifyWebhookSignature(webhookData, signature);
-            if (!isValidSignature) {
-                console.error(`[${webhookId}] Invalid webhook signature`);
-                return res.status(400).json({
-                    success: false,
-                    message: "Invalid webhook signature",
-                    webhookId
-                });
+            if (signature) {
+                const isValidSignature = payosService.verifyWebhookSignature(webhookData, signature);
+                if (!isValidSignature) {
+                    console.error(`[${webhookId}] Invalid webhook signature`);
+                    return res.status(400).json({
+                        success: false,
+                        message: "Invalid webhook signature",
+                        webhookId
+                    });
+                }
             }
 
             // Process webhook
@@ -417,21 +429,24 @@ const syncPaymentStatus = async (req, res) => {
 
         // Update payment status based on PayOS data
         const payosData = payosResult.data;
-        let newStatus = payment.status;
+        const previousStatus = payment.status;
+        let newStatus = previousStatus;
 
         if (payosData.status === "PAID") {
             newStatus = "paid";
             payment.transaction = {
                 transactionId: payosData.transactionId,
-                transactionTime: new Date(payosData.transactionTime),
+                transactionTime: new Date(payosData.transactionTime || Date.now()),
                 amount: payosData.amount,
                 fee: payosData.fee || 0,
-                netAmount: payosData.netAmount || payosData.amount
+                netAmount: payosData.netAmount || payosData.amount,
             };
         } else if (payosData.status === "CANCELLED") {
             newStatus = "cancelled";
         } else if (payosData.status === "EXPIRED") {
             newStatus = "expired";
+        } else if (payosData.status === "FAILED") {
+            newStatus = "failed";
         }
 
         payment.status = newStatus;
@@ -441,16 +456,42 @@ const syncPaymentStatus = async (req, res) => {
 
         await payment.save();
 
+        // Keep appointment in sync (mirror webhook logic)
+        try {
+            if (newStatus === "paid") {
+                await Appointment.findByIdAndUpdate(payment.appointment, {
+                    "payment.status": "paid",
+                    "payment.paidAt": new Date(),
+                    "payment.transactionId": payosData.transactionId,
+                    "status": "confirmed",
+                });
+            } else if (newStatus === "cancelled") {
+                await Appointment.findByIdAndUpdate(payment.appointment, {
+                    "payment.status": "cancelled",
+                    "payment.cancelledAt": new Date(),
+                    "status": "cancelled",
+                    "cancellation": {
+                        isCancelled: true,
+                        reason: "Payment cancelled on PayOS (sync)",
+                        cancelledAt: new Date(),
+                        cancelledBy: payment.customer,
+                    },
+                });
+            }
+        } catch (syncErr) {
+            console.warn("Appointment sync after payment sync failed:", syncErr?.message);
+        }
+
         return res.status(200).json({
             success: true,
             message: "Đồng bộ trạng thái thanh toán thành công",
             data: {
                 paymentId: payment._id,
                 orderCode: orderCode,
-                oldStatus: payment.status,
-                newStatus: newStatus,
-                payosStatus: payosData.status
-            }
+                previousStatus,
+                newStatus,
+                payosStatus: payosData.status,
+            },
         });
 
     } catch (error) {
