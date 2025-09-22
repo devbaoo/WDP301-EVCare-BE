@@ -32,6 +32,42 @@ const generateChecksum = (data) => {
     return checksum;
 };
 
+// Verify webhook signature from PayOS
+const verifyWebhookSignature = (webhookData, signature) => {
+    try {
+        if (!PAYOS_CHECKSUM_KEY) {
+            console.warn("PayOS checksum key not configured, skipping signature verification");
+            return true; // Allow in development
+        }
+
+        if (!signature) {
+            console.error("No signature provided for webhook verification");
+            return false;
+        }
+
+        // PayOS webhook signature verification
+        // PayOS sends signature in format: sha256=<hash>
+        const expectedSignature = crypto
+            .createHmac("sha256", PAYOS_CHECKSUM_KEY)
+            .update(JSON.stringify(webhookData))
+            .digest("hex")
+            .toLowerCase();
+
+        const providedSignature = signature.toLowerCase().replace('sha256=', '');
+
+        console.log("Webhook signature verification:", {
+            expected: expectedSignature,
+            provided: providedSignature,
+            match: expectedSignature === providedSignature
+        });
+
+        return expectedSignature === providedSignature;
+    } catch (error) {
+        console.error("Webhook signature verification error:", error);
+        return false;
+    }
+};
+
 // Create payment link
 const createPaymentLink = async (paymentData) => {
     try {
@@ -324,11 +360,26 @@ const createBookingPayment = async (appointmentId, customerId) => {
 };
 
 // Handle PayOS webhook with idempotency
-const handleWebhook = async (webhookData) => {
+const handleWebhook = async (webhookData, webhookId = null) => {
     try {
+        console.log(`[${webhookId || 'webhook'}] Processing webhook:`, {
+            rawData: webhookData,
+            timestamp: new Date().toISOString()
+        });
+
         // Normalize payload (PayOS có thể bọc trong data)
         const payload = webhookData?.data && typeof webhookData.data === 'object' ? webhookData.data : webhookData;
-        let { orderCode, status, transactionTime, amount, fee, netAmount, eventId } = payload;
+        let { orderCode, status, transactionTime, amount, fee, netAmount, eventId, transactionId } = payload;
+
+        // Validate required fields
+        if (!orderCode) {
+            console.error(`[${webhookId || 'webhook'}] Missing orderCode in webhook data`);
+            return {
+                success: false,
+                message: "Missing orderCode in webhook data",
+                webhookId
+            };
+        }
 
         // Coerce types
         const numericOrderCode = parseInt(orderCode, 10);
@@ -338,88 +389,145 @@ const handleWebhook = async (webhookData) => {
 
         // Map status variants
         const normalizedStatus = (status || '').toUpperCase();
-        const statusMap = { SUCCESS: 'PAID', COMPLETED: 'PAID', DONE: 'PAID', CANCEL: 'CANCELLED' };
+        const statusMap = {
+            SUCCESS: 'PAID',
+            COMPLETED: 'PAID',
+            DONE: 'PAID',
+            CANCEL: 'CANCELLED',
+            CANCELLED: 'CANCELLED',
+            EXPIRED: 'EXPIRED',
+            FAILED: 'FAILED'
+        };
         const finalStatus = statusMap[normalizedStatus] || normalizedStatus;
+
+        console.log(`[${webhookId || 'webhook'}] Normalized webhook data:`, {
+            orderCode: numericOrderCode,
+            status: finalStatus,
+            amount: numericAmount,
+            transactionId
+        });
 
         // Find payment by order code
         const payment = await Payment.findOne({
             "payosInfo.orderCode": numericOrderCode,
-        });
+        }).populate('appointment', 'status serviceType serviceCenter customer');
 
         if (!payment) {
+            console.error(`[${webhookId || 'webhook'}] Payment not found for orderCode: ${numericOrderCode}`);
             return {
                 success: false,
-                message: "Payment not found",
+                message: `Payment not found for orderCode: ${numericOrderCode}`,
+                webhookId
             };
         }
+
+        console.log(`[${webhookId || 'webhook'}] Found payment:`, {
+            paymentId: payment._id,
+            currentStatus: payment.status,
+            appointmentId: payment.appointment?._id
+        });
 
         // Idempotency: if same event already processed (prefer eventId)
         const incomingId = eventId || `${numericOrderCode}|${finalStatus}|${numericAmount}`;
         const prev = payment.webhook?.data || {};
         const existingId = prev.eventId || `${prev.orderCode || prev.payosInfo?.orderCode || ''}|${prev.status}|${prev.amount}`;
+
         if (existingId && existingId === incomingId) {
-            return { success: true, message: "Duplicate webhook ignored" };
+            console.log(`[${webhookId || 'webhook'}] Duplicate webhook ignored:`, { incomingId, existingId });
+            return {
+                success: true,
+                message: "Duplicate webhook ignored",
+                webhookId
+            };
         }
 
         // Update webhook info
         payment.webhook.received = true;
         payment.webhook.receivedAt = new Date();
-        payment.webhook.data = { ...payload, status: finalStatus };
+        payment.webhook.data = { ...payload, status: finalStatus, webhookId };
+
+        console.log(`[${webhookId || 'webhook'}] Processing status: ${finalStatus}`);
 
         // Handle different statuses
         switch (finalStatus) {
             case "PAID":
+                console.log(`[${webhookId || 'webhook'}] Marking payment as paid`);
                 await payment.markAsPaid({
-                    transactionId: payload.transactionId,
+                    transactionId: transactionId || payload.transactionId,
                     amount: numericAmount,
                     fee: numericFee,
                     netAmount: numericNet,
                 });
 
                 // Update appointment status
-                await Appointment.findByIdAndUpdate(payment.appointment, {
-                    "payment.status": "paid",
-                    "payment.paidAt": new Date(),
-                    "payment.transactionId": payload.transactionId,
-                });
+                if (payment.appointment) {
+                    await Appointment.findByIdAndUpdate(payment.appointment._id, {
+                        "payment.status": "paid",
+                        "payment.paidAt": new Date(),
+                        "payment.transactionId": transactionId || payload.transactionId,
+                        "status": "confirmed"
+                    });
+                    console.log(`[${webhookId || 'webhook'}] Updated appointment status to confirmed`);
+                }
                 break;
 
             case "CANCELLED":
+                console.log(`[${webhookId || 'webhook'}] Marking payment as cancelled`);
                 payment.status = "cancelled";
                 await payment.save();
 
                 // Update appointment status
-                await Appointment.findByIdAndUpdate(payment.appointment, {
-                    "payment.status": "cancelled",
-                    "payment.cancelledAt": new Date(),
-                    "status": "cancelled",
-                    "cancellation": {
-                        isCancelled: true,
-                        reason: "Payment cancelled on PayOS",
-                        cancelledAt: new Date(),
-                        cancelledBy: payment.customer
-                    }
-                });
+                if (payment.appointment) {
+                    await Appointment.findByIdAndUpdate(payment.appointment._id, {
+                        "payment.status": "cancelled",
+                        "payment.cancelledAt": new Date(),
+                        "status": "cancelled",
+                        "cancellation": {
+                            isCancelled: true,
+                            reason: "Payment cancelled on PayOS",
+                            cancelledAt: new Date(),
+                            cancelledBy: payment.customer
+                        }
+                    });
+                    console.log(`[${webhookId || 'webhook'}] Updated appointment status to cancelled`);
+                }
                 break;
 
             case "EXPIRED":
+                console.log(`[${webhookId || 'webhook'}] Marking payment as expired`);
                 await payment.markAsExpired();
                 break;
 
+            case "FAILED":
+                console.log(`[${webhookId || 'webhook'}] Marking payment as failed`);
+                await payment.markAsFailed("Payment failed on PayOS");
+                break;
+
             default:
-                console.log(`Unknown payment status: ${status}`);
+                console.warn(`[${webhookId || 'webhook'}] Unknown payment status: ${status} (normalized: ${finalStatus})`);
         }
+
+        console.log(`[${webhookId || 'webhook'}] Webhook processed successfully`);
 
         return {
             success: true,
             message: "Webhook processed successfully",
+            webhookId,
+            paymentId: payment._id,
+            orderCode: numericOrderCode,
+            status: finalStatus
         };
     } catch (error) {
-        console.error("Handle webhook error:", error);
+        console.error(`[${webhookId || 'webhook'}] Handle webhook error:`, {
+            error: error.message,
+            stack: error.stack,
+            webhookData
+        });
         return {
             success: false,
             message: "Webhook processing failed",
             error: error.message,
+            webhookId
         };
     }
 };
@@ -744,6 +852,7 @@ export default {
     createSubscriptionPayment,
     createAppointmentCustomPayment,
     handleWebhook,
+    verifyWebhookSignature,
     getPaymentStatus,
     cancelBookingPayment,
     getCustomerPayments,
