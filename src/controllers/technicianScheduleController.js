@@ -1,6 +1,39 @@
 import technicianScheduleService from "../services/technicianScheduleService.js";
 
 const technicianScheduleController = {
+  // Tạo lịch làm việc mặc định cho kỹ thuật viên
+  createDefaultSchedule: async (req, res) => {
+    try {
+      const { technicianId, centerId, startDate, endDate } = req.body;
+
+      // Validate required fields
+      if (!technicianId || !centerId || !startDate || !endDate) {
+        return res.status(400).json({
+          success: false,
+          message:
+            "Missing required fields: technicianId, centerId, startDate, endDate",
+        });
+      }
+
+      const schedules = await technicianScheduleService.createDefaultSchedule(
+        technicianId,
+        centerId,
+        startDate,
+        endDate
+      );
+
+      res.status(201).json({
+        success: true,
+        data: schedules,
+        message: `Successfully created ${schedules.length} default schedules`,
+      });
+    } catch (error) {
+      res.status(500).json({
+        success: false,
+        message: error.message || "Failed to create default schedules",
+      });
+    }
+  },
   // Get all schedules
   getAllSchedules: async (req, res) => {
     try {
@@ -465,6 +498,119 @@ const technicianScheduleController = {
       res.status(500).json({
         success: false,
         message: error.message || "Failed to generate overtime report",
+      });
+    }
+  },
+
+  // ===== CHỨC NĂNG XIN NGHỈ PHÉP =====
+
+  // Gửi yêu cầu xin nghỉ phép
+  requestLeave: async (req, res) => {
+    try {
+      const { technicianId } = req.params;
+      const { startDate, endDate, reason } = req.body;
+
+      // Validate required fields
+      if (!startDate || !endDate || !reason) {
+        return res.status(400).json({
+          success: false,
+          message: "Missing required fields: startDate, endDate, reason",
+        });
+      }
+
+      const updatedSchedules = await technicianScheduleService.requestLeave(
+        technicianId,
+        { startDate, endDate, reason }
+      );
+
+      res.status(200).json({
+        success: true,
+        data: updatedSchedules,
+        message: "Leave request submitted successfully",
+      });
+    } catch (error) {
+      res.status(500).json({
+        success: false,
+        message: error.message || "Failed to submit leave request",
+      });
+    }
+  },
+
+  // Phê duyệt hoặc từ chối yêu cầu xin nghỉ
+  processLeaveRequest: async (req, res) => {
+    try {
+      const { scheduleId } = req.params;
+      const { action } = req.body;
+      const managerId = req.user.id; // Lấy ID của người quản lý từ token xác thực
+
+      if (!action || (action !== "approve" && action !== "reject")) {
+        return res.status(400).json({
+          success: false,
+          message: "Action must be either 'approve' or 'reject'",
+        });
+      }
+
+      const updatedSchedule =
+        await technicianScheduleService.processLeaveRequest(
+          scheduleId,
+          managerId,
+          action
+        );
+
+      res.status(200).json({
+        success: true,
+        data: updatedSchedule,
+        message: `Leave request ${
+          action === "approve" ? "approved" : "rejected"
+        } successfully`,
+      });
+    } catch (error) {
+      res.status(500).json({
+        success: false,
+        message: error.message || "Failed to process leave request",
+      });
+    }
+  },
+
+  // Lấy danh sách yêu cầu xin nghỉ đang chờ duyệt
+  getPendingLeaveRequests: async (req, res) => {
+    try {
+      const { centerId } = req.query;
+
+      const pendingRequests =
+        await technicianScheduleService.getPendingLeaveRequests(centerId);
+
+      res.status(200).json({
+        success: true,
+        data: pendingRequests,
+      });
+    } catch (error) {
+      res.status(500).json({
+        success: false,
+        message: error.message || "Failed to fetch pending leave requests",
+      });
+    }
+  },
+
+  // Lấy lịch sử xin nghỉ của một kỹ thuật viên
+  getLeaveHistory: async (req, res) => {
+    try {
+      const { technicianId } = req.params;
+      const { status } = req.query;
+
+      const leaveHistory = await technicianScheduleService.getLeaveHistory(
+        technicianId,
+        status
+      );
+
+      res.status(200).json({
+        success: true,
+        data: leaveHistory,
+      });
+    } catch (error) {
+      res.status(500).json({
+        success: false,
+        message: error.message || "Failed to fetch leave history",
       });
     }
   },

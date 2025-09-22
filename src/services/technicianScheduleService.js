@@ -33,7 +33,79 @@ const technicianScheduleService = {
     }
   },
 
-  // Create new schedule
+  // Tạo lịch làm việc mặc định cho kỹ thuật viên
+  createDefaultSchedule: async (technicianId, centerId, startDate, endDate) => {
+    try {
+      // Kiểm tra kỹ thuật viên tồn tại
+      const technicianExists = await User.findById(technicianId);
+      if (!technicianExists) {
+        throw new Error("Technician not found");
+      }
+
+      // Kiểm tra trung tâm dịch vụ tồn tại
+      const centerExists = await ServiceCenter.findById(centerId);
+      if (!centerExists) {
+        throw new Error("Service center not found");
+      }
+
+      // Chuyển đổi ngày bắt đầu và kết thúc thành đối tượng Date
+      const start = new Date(startDate);
+      start.setHours(0, 0, 0, 0);
+
+      const end = new Date(endDate);
+      end.setHours(23, 59, 59, 999);
+
+      // Mảng lưu trữ các lịch đã tạo
+      const createdSchedules = [];
+
+      // Tạo lịch làm việc cho mỗi ngày từ startDate đến endDate (chỉ từ thứ 2 đến thứ 7)
+      const currentDate = new Date(start);
+      while (currentDate <= end) {
+        const dayOfWeek = currentDate.getDay(); // 0 = Chủ nhật, 1-6 = Thứ 2 - Thứ 7
+
+        // Chỉ tạo lịch cho các ngày từ thứ 2 đến thứ 7 (dayOfWeek từ 1 đến 6)
+        if (dayOfWeek >= 1 && dayOfWeek <= 6) {
+          // Kiểm tra xem đã có lịch cho ngày này chưa
+          const existingSchedule = await TechnicianSchedule.findOne({
+            technicianId,
+            workDate: {
+              $gte: new Date(currentDate.setHours(0, 0, 0, 0)),
+              $lt: new Date(currentDate.setHours(23, 59, 59, 999)),
+            },
+          });
+
+          // Nếu chưa có lịch, tạo lịch mới
+          if (!existingSchedule) {
+            const newSchedule = new TechnicianSchedule({
+              technicianId,
+              centerId,
+              workDate: new Date(currentDate),
+              // Sử dụng giá trị mặc định cho shiftStart (8:00) và shiftEnd (17:00)
+            });
+
+            await newSchedule.save();
+
+            const populatedSchedule = await TechnicianSchedule.findById(
+              newSchedule._id
+            )
+              .populate("technicianId", "firstName lastName email phoneNumber")
+              .populate("centerId", "name address");
+
+            createdSchedules.push(populatedSchedule);
+          }
+        }
+
+        // Tăng ngày hiện tại lên 1 ngày
+        currentDate.setDate(currentDate.getDate() + 1);
+      }
+
+      return createdSchedules;
+    } catch (error) {
+      throw new Error(`Error creating default schedules: ${error.message}`);
+    }
+  },
+
+  // Create new schedule (giữ lại để tương thích ngược)
   createSchedule: async (scheduleData) => {
     try {
       // Check if technician exists
@@ -49,8 +121,12 @@ const technicianScheduleService = {
       }
 
       // Validate shift times
-      const startTime = scheduleData.shiftStart.split(":");
-      const endTime = scheduleData.shiftEnd.split(":");
+      const startTime = scheduleData.shiftStart
+        ? scheduleData.shiftStart.split(":")
+        : ["08", "00"];
+      const endTime = scheduleData.shiftEnd
+        ? scheduleData.shiftEnd.split(":")
+        : ["17", "00"];
 
       const startHour = parseInt(startTime[0]);
       const startMinute = parseInt(startTime[1]);
@@ -533,6 +609,285 @@ const technicianScheduleService = {
       return Object.values(overtimeByTechnician);
     } catch (error) {
       throw new Error(`Error generating overtime report: ${error.message}`);
+    }
+  },
+
+  // ===== CHỨC NĂNG XIN NGHỈ PHÉP =====
+
+  // Gửi yêu cầu xin nghỉ phép
+  requestLeave: async (technicianId, leaveData) => {
+    try {
+      if (!mongoose.Types.ObjectId.isValid(technicianId)) {
+        throw new Error("Invalid technician ID");
+      }
+
+      const { startDate, endDate, reason } = leaveData;
+
+      if (!startDate || !endDate || !reason) {
+        throw new Error("Start date, end date and reason are required");
+      }
+
+      // Chuyển đổi ngày bắt đầu và kết thúc thành đối tượng Date
+      const start = new Date(startDate);
+      start.setHours(0, 0, 0, 0);
+
+      const end = new Date(endDate);
+      end.setHours(23, 59, 59, 999);
+
+      // Kiểm tra ngày bắt đầu phải trước ngày kết thúc
+      if (start > end) {
+        throw new Error("Start date must be before end date");
+      }
+
+      // Tìm tất cả lịch làm việc trong khoảng thời gian xin nghỉ
+      const schedules = await TechnicianSchedule.find({
+        technicianId,
+        workDate: { $gte: start, $lte: end },
+      });
+
+      // Nếu không có lịch làm việc nào trong khoảng thời gian này
+      if (schedules.length === 0) {
+        throw new Error("No work schedules found in the specified date range");
+      }
+
+      // Kiểm tra xem có lịch nào đã có yêu cầu nghỉ phép đang chờ duyệt hoặc đã được duyệt
+      const hasExistingLeaveRequests = schedules.some(
+        (schedule) =>
+          schedule.leaveRequest &&
+          (schedule.leaveRequest.status === "pending" ||
+            schedule.leaveRequest.status === "approved")
+      );
+
+      if (hasExistingLeaveRequests) {
+        throw new Error(
+          "There are already leave requests pending or approved for some of these dates"
+        );
+      }
+
+      // Cập nhật tất cả lịch làm việc với thông tin xin nghỉ
+      const updatedSchedules = [];
+
+      for (const schedule of schedules) {
+        schedule.status = "leave_requested";
+        schedule.leaveRequest = {
+          startDate: start,
+          endDate: end,
+          reason,
+          status: "pending",
+          requestedAt: new Date(),
+        };
+
+        await schedule.save();
+
+        const updatedSchedule = await TechnicianSchedule.findById(schedule._id)
+          .populate("technicianId", "firstName lastName email phoneNumber")
+          .populate("centerId", "name address");
+
+        updatedSchedules.push(updatedSchedule);
+      }
+
+      return updatedSchedules;
+    } catch (error) {
+      throw new Error(`Error requesting leave: ${error.message}`);
+    }
+  },
+
+  // Phê duyệt hoặc từ chối yêu cầu xin nghỉ
+  processLeaveRequest: async (scheduleId, managerId, action) => {
+    try {
+      if (!mongoose.Types.ObjectId.isValid(scheduleId)) {
+        throw new Error("Invalid schedule ID");
+      }
+
+      if (!mongoose.Types.ObjectId.isValid(managerId)) {
+        throw new Error("Invalid manager ID");
+      }
+
+      // Kiểm tra action hợp lệ
+      if (action !== "approve" && action !== "reject") {
+        throw new Error("Invalid action. Must be either 'approve' or 'reject'");
+      }
+
+      // Tìm lịch làm việc
+      const schedule = await TechnicianSchedule.findById(scheduleId);
+
+      if (!schedule) {
+        throw new Error("Schedule not found");
+      }
+
+      // Kiểm tra xem có yêu cầu xin nghỉ đang chờ duyệt không
+      if (
+        !schedule.leaveRequest ||
+        schedule.leaveRequest.status !== "pending"
+      ) {
+        throw new Error("No pending leave request found for this schedule");
+      }
+
+      // Cập nhật trạng thái yêu cầu xin nghỉ
+      schedule.leaveRequest.status =
+        action === "approve" ? "approved" : "rejected";
+      schedule.leaveRequest.approvedBy = managerId;
+      schedule.leaveRequest.approvedAt = new Date();
+
+      // Nếu phê duyệt, cập nhật trạng thái lịch làm việc
+      if (action === "approve") {
+        schedule.status = "on_leave";
+        schedule.availability = "unavailable";
+      } else {
+        // Nếu từ chối, đặt lại trạng thái lịch làm việc
+        schedule.status = "scheduled";
+      }
+
+      await schedule.save();
+
+      // Nếu phê duyệt, cập nhật tất cả các lịch làm việc khác trong khoảng thời gian xin nghỉ
+      if (action === "approve") {
+        const startDate = schedule.leaveRequest.startDate;
+        const endDate = schedule.leaveRequest.endDate;
+        const technicianId = schedule.technicianId;
+
+        // Tìm tất cả lịch làm việc khác trong khoảng thời gian này
+        const otherSchedules = await TechnicianSchedule.find({
+          _id: { $ne: scheduleId },
+          technicianId,
+          workDate: { $gte: startDate, $lte: endDate },
+          "leaveRequest.status": "pending",
+        });
+
+        // Cập nhật tất cả lịch làm việc khác
+        for (const otherSchedule of otherSchedules) {
+          otherSchedule.leaveRequest.status = "approved";
+          otherSchedule.leaveRequest.approvedBy = managerId;
+          otherSchedule.leaveRequest.approvedAt = new Date();
+          otherSchedule.status = "on_leave";
+          otherSchedule.availability = "unavailable";
+
+          await otherSchedule.save();
+        }
+      }
+
+      return await TechnicianSchedule.findById(scheduleId)
+        .populate("technicianId", "firstName lastName email phoneNumber")
+        .populate("centerId", "name address")
+        .populate("leaveRequest.approvedBy", "firstName lastName email");
+    } catch (error) {
+      throw new Error(`Error processing leave request: ${error.message}`);
+    }
+  },
+
+  // Lấy danh sách yêu cầu xin nghỉ đang chờ duyệt
+  getPendingLeaveRequests: async (centerId = null) => {
+    try {
+      const query = {
+        "leaveRequest.status": "pending",
+        status: "leave_requested",
+      };
+
+      // Lọc theo trung tâm nếu có
+      if (centerId && mongoose.Types.ObjectId.isValid(centerId)) {
+        query.centerId = centerId;
+      }
+
+      // Lấy tất cả lịch làm việc có yêu cầu xin nghỉ đang chờ duyệt
+      const schedules = await TechnicianSchedule.find(query)
+        .populate("technicianId", "firstName lastName email phoneNumber")
+        .populate("centerId", "name address")
+        .sort({ "leaveRequest.requestedAt": -1 });
+
+      // Nhóm các yêu cầu xin nghỉ theo kỹ thuật viên và khoảng thời gian
+      const groupedRequests = {};
+
+      schedules.forEach((schedule) => {
+        const techId = schedule.technicianId._id.toString();
+        const startDate = schedule.leaveRequest.startDate
+          .toISOString()
+          .split("T")[0];
+        const endDate = schedule.leaveRequest.endDate
+          .toISOString()
+          .split("T")[0];
+        const key = `${techId}-${startDate}-${endDate}`;
+
+        if (!groupedRequests[key]) {
+          groupedRequests[key] = {
+            technicianId: techId,
+            technicianName: `${schedule.technicianId.firstName} ${schedule.technicianId.lastName}`,
+            startDate: schedule.leaveRequest.startDate,
+            endDate: schedule.leaveRequest.endDate,
+            reason: schedule.leaveRequest.reason,
+            requestedAt: schedule.leaveRequest.requestedAt,
+            centerId: schedule.centerId._id,
+            centerName: schedule.centerId.name,
+            scheduleIds: [],
+          };
+        }
+
+        groupedRequests[key].scheduleIds.push(schedule._id);
+      });
+
+      return Object.values(groupedRequests);
+    } catch (error) {
+      throw new Error(
+        `Error fetching pending leave requests: ${error.message}`
+      );
+    }
+  },
+
+  // Lấy lịch sử xin nghỉ của một kỹ thuật viên
+  getLeaveHistory: async (technicianId, status = null) => {
+    try {
+      if (!mongoose.Types.ObjectId.isValid(technicianId)) {
+        throw new Error("Invalid technician ID");
+      }
+
+      const query = {
+        technicianId,
+        leaveRequest: { $exists: true, $ne: null },
+      };
+
+      // Lọc theo trạng thái nếu có
+      if (status) {
+        query["leaveRequest.status"] = status;
+      }
+
+      // Lấy tất cả lịch làm việc có thông tin xin nghỉ
+      const schedules = await TechnicianSchedule.find(query)
+        .populate("centerId", "name address")
+        .populate("leaveRequest.approvedBy", "firstName lastName email")
+        .sort({ "leaveRequest.requestedAt": -1 });
+
+      // Nhóm các yêu cầu xin nghỉ theo khoảng thời gian
+      const groupedHistory = {};
+
+      schedules.forEach((schedule) => {
+        if (!schedule.leaveRequest) return;
+
+        const startDate = schedule.leaveRequest.startDate
+          .toISOString()
+          .split("T")[0];
+        const endDate = schedule.leaveRequest.endDate
+          .toISOString()
+          .split("T")[0];
+        const key = `${startDate}-${endDate}-${schedule.leaveRequest.status}`;
+
+        if (!groupedHistory[key]) {
+          groupedHistory[key] = {
+            startDate: schedule.leaveRequest.startDate,
+            endDate: schedule.leaveRequest.endDate,
+            reason: schedule.leaveRequest.reason,
+            status: schedule.leaveRequest.status,
+            requestedAt: schedule.leaveRequest.requestedAt,
+            approvedAt: schedule.leaveRequest.approvedAt,
+            approvedBy: schedule.leaveRequest.approvedBy,
+            scheduleIds: [],
+          };
+        }
+
+        groupedHistory[key].scheduleIds.push(schedule._id);
+      });
+
+      return Object.values(groupedHistory);
+    } catch (error) {
+      throw new Error(`Error fetching leave history: ${error.message}`);
     }
   },
 };
