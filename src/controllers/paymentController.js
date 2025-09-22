@@ -127,6 +127,22 @@ const handleWebhook = async (req, res) => {
         if (req.method === 'POST') {
             // Verify webhook signature (PayOS security)
             const signature = headers['x-payos-signature'];
+
+            // Some dashboard verifications send POST without signature or body.
+            // If there's no signature AND no orderCode in payload, respond 200 for verification only.
+            const maybePayload = webhookData && typeof webhookData === 'object' ? webhookData : {};
+            const payload = maybePayload?.data && typeof maybePayload.data === 'object' ? maybePayload.data : maybePayload;
+            const hasOrderCode = Boolean(payload?.orderCode);
+            if (!signature && !hasOrderCode) {
+                console.warn(`[${webhookId}] Unsigned POST verification without orderCode → returning 200 (no-op)`);
+                return res.status(200).json({
+                    success: true,
+                    message: "Webhook verification OK",
+                    timestamp: new Date().toISOString(),
+                    webhookId
+                });
+            }
+
             if (!signature) {
                 console.warn(`[${webhookId}] Missing PayOS signature`);
                 return res.status(400).json({
