@@ -4,6 +4,45 @@ import User from "../models/user.js";
 import ServiceCenter from "../models/serviceCenter.js";
 
 const staffAssignmentService = {
+  // Check if a technician is already assigned to another center
+  checkTechnicianCenterAssignment: async (userId, centerId) => {
+    try {
+      if (!mongoose.Types.ObjectId.isValid(userId)) {
+        throw new Error("Invalid user ID");
+      }
+
+      if (!mongoose.Types.ObjectId.isValid(centerId)) {
+        throw new Error("Invalid service center ID");
+      }
+
+      // Check if the user is a technician
+      const user = await User.findById(userId);
+      if (!user) {
+        throw new Error("User not found");
+      }
+
+      // Only apply this constraint for technicians
+      if (user.role === "technician") {
+        // Find any existing assignment for this technician at a different center
+        const existingAssignment = await StaffAssignment.findOne({
+          userId,
+          centerId: { $ne: centerId },
+          isActive: true,
+          position: "technician",
+        }).populate("centerId", "name");
+
+        if (existingAssignment) {
+          throw new Error(
+            `Technician is already assigned to service center: ${existingAssignment.centerId.name}`
+          );
+        }
+      }
+
+      return true;
+    } catch (error) {
+      throw new Error(`Error checking technician assignment: ${error.message}`);
+    }
+  },
   // Get all staff assignments with optional filtering
   getAllStaffAssignments: async (filters = {}) => {
     try {
@@ -59,6 +98,14 @@ const staffAssignmentService = {
         throw new Error("User is already assigned to this service center");
       }
 
+      // If position is technician, check if already assigned to another center
+      if (assignmentData.position === "technician") {
+        await staffAssignmentService.checkTechnicianCenterAssignment(
+          assignmentData.userId,
+          assignmentData.centerId
+        );
+      }
+
       // Update user role based on position
       if (assignmentData.position === "technician") {
         await User.findByIdAndUpdate(assignmentData.userId, {
@@ -85,6 +132,23 @@ const staffAssignmentService = {
     try {
       if (!mongoose.Types.ObjectId.isValid(id)) {
         throw new Error("Invalid assignment ID");
+      }
+
+      // Get current assignment data
+      const currentAssignment = await StaffAssignment.findById(id);
+      if (!currentAssignment) {
+        throw new Error("Staff assignment not found");
+      }
+
+      // If position is being updated to technician, check if already assigned to another center
+      if (
+        updateData.position === "technician" &&
+        currentAssignment.position !== "technician"
+      ) {
+        await staffAssignmentService.checkTechnicianCenterAssignment(
+          currentAssignment.userId,
+          currentAssignment.centerId
+        );
       }
 
       const assignment = await StaffAssignment.findByIdAndUpdate(
@@ -184,6 +248,23 @@ const staffAssignmentService = {
         throw new Error("Invalid position. Must be one of: staff, technician");
       }
 
+      // Get current assignment data
+      const currentAssignment = await StaffAssignment.findById(id);
+      if (!currentAssignment) {
+        throw new Error("Staff assignment not found");
+      }
+
+      // If position is being updated to technician, check if already assigned to another center
+      if (
+        position === "technician" &&
+        currentAssignment.position !== "technician"
+      ) {
+        await staffAssignmentService.checkTechnicianCenterAssignment(
+          currentAssignment.userId,
+          currentAssignment.centerId
+        );
+      }
+
       const assignment = await StaffAssignment.findByIdAndUpdate(
         id,
         { $set: { position } },
@@ -191,6 +272,9 @@ const staffAssignmentService = {
       )
         .populate("userId", "firstName lastName email phoneNumber avatar")
         .populate("centerId", "name address location");
+
+      // Update user role based on position
+      await User.findByIdAndUpdate(assignment.userId, { role: position });
 
       return assignment;
     } catch (error) {

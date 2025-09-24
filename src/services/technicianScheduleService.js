@@ -4,6 +4,37 @@ import User from "../models/user.js";
 import ServiceCenter from "../models/serviceCenter.js";
 
 const technicianScheduleService = {
+  // Check if a technician is already assigned to another center
+  checkTechnicianCenterAssignment: async (technicianId, centerId) => {
+    try {
+      if (!mongoose.Types.ObjectId.isValid(technicianId)) {
+        throw new Error("Invalid technician ID");
+      }
+
+      if (!mongoose.Types.ObjectId.isValid(centerId)) {
+        throw new Error("Invalid service center ID");
+      }
+
+      // Find any existing schedule for this technician at a different center
+      const existingAssignment = await TechnicianSchedule.findOne({
+        technicianId,
+        centerId: { $ne: centerId },
+      });
+
+      if (existingAssignment) {
+        const center = await ServiceCenter.findById(
+          existingAssignment.centerId
+        );
+        throw new Error(
+          `Technician is already assigned to service center: ${center.name}`
+        );
+      }
+
+      return true;
+    } catch (error) {
+      throw new Error(`Error checking technician assignment: ${error.message}`);
+    }
+  },
   // Get all schedules with optional filtering
   getAllSchedules: async (filters = {}) => {
     try {
@@ -48,12 +79,31 @@ const technicianScheduleService = {
         throw new Error("Service center not found");
       }
 
-      // Chuyển đổi ngày bắt đầu và kết thúc thành đối tượng Date
-      const start = new Date(startDate);
-      start.setHours(0, 0, 0, 0);
+      // Kiểm tra kỹ thuật viên đã được phân công cho trung tâm khác chưa
+      await technicianScheduleService.checkTechnicianCenterAssignment(
+        technicianId,
+        centerId
+      );
 
-      const end = new Date(endDate);
-      end.setHours(23, 59, 59, 999);
+      // Chuyển đổi ngày bắt đầu và kết thúc thành đối tượng Date, sử dụng múi giờ Việt Nam (UTC+7)
+      // Xử lý định dạng YYYY-MM-DD để tránh vấn đề múi giờ
+      const [startYear, startMonth, startDay] = startDate
+        .split("-")
+        .map((num) => parseInt(num));
+      // Tạo ngày với múi giờ Việt Nam (UTC+7)
+      const start = new Date(
+        Date.UTC(startYear, startMonth - 1, startDay) + 7 * 60 * 60 * 1000
+      );
+      start.setUTCHours(0, 0, 0, 0);
+
+      const [endYear, endMonth, endDay] = endDate
+        .split("-")
+        .map((num) => parseInt(num));
+      // Tạo ngày với múi giờ Việt Nam (UTC+7)
+      const end = new Date(
+        Date.UTC(endYear, endMonth - 1, endDay) + 7 * 60 * 60 * 1000
+      );
+      end.setUTCHours(23, 59, 59, 999);
 
       // Mảng lưu trữ các lịch đã tạo
       const createdSchedules = [];
@@ -65,21 +115,41 @@ const technicianScheduleService = {
 
         // Chỉ tạo lịch cho các ngày từ thứ 2 đến thứ 7 (dayOfWeek từ 1 đến 6)
         if (dayOfWeek >= 1 && dayOfWeek <= 6) {
+          // Tạo bản sao của ngày hiện tại với múi giờ Việt Nam (UTC+7) để tránh thay đổi giá trị gốc
+          const checkDate = new Date(
+            Date.UTC(
+              currentDate.getFullYear(),
+              currentDate.getMonth(),
+              currentDate.getDate()
+            ) +
+              7 * 60 * 60 * 1000
+          );
+
           // Kiểm tra xem đã có lịch cho ngày này chưa
           const existingSchedule = await TechnicianSchedule.findOne({
             technicianId,
             workDate: {
-              $gte: new Date(currentDate.setHours(0, 0, 0, 0)),
-              $lt: new Date(currentDate.setHours(23, 59, 59, 999)),
+              $gte: new Date(checkDate.setHours(0, 0, 0, 0)),
+              $lt: new Date(checkDate.setHours(23, 59, 59, 999)),
             },
           });
 
           // Nếu chưa có lịch, tạo lịch mới
           if (!existingSchedule) {
+            // Tạo một bản sao chính xác của currentDate với múi giờ Việt Nam (UTC+7)
+            const scheduleDate = new Date(
+              Date.UTC(
+                currentDate.getFullYear(),
+                currentDate.getMonth(),
+                currentDate.getDate()
+              ) +
+                7 * 60 * 60 * 1000
+            );
+
             const newSchedule = new TechnicianSchedule({
               technicianId,
               centerId,
-              workDate: new Date(currentDate),
+              workDate: scheduleDate,
               // Sử dụng giá trị mặc định cho shiftStart (8:00) và shiftEnd (17:00)
             });
 
@@ -119,6 +189,12 @@ const technicianScheduleService = {
       if (!centerExists) {
         throw new Error("Service center not found");
       }
+
+      // Check if technician is already assigned to another center
+      await technicianScheduleService.checkTechnicianCenterAssignment(
+        scheduleData.technicianId,
+        scheduleData.centerId
+      );
 
       // Validate shift times
       const startTime = scheduleData.shiftStart
@@ -888,6 +964,30 @@ const technicianScheduleService = {
       return Object.values(groupedHistory);
     } catch (error) {
       throw new Error(`Error fetching leave history: ${error.message}`);
+    }
+  },
+
+  // Get technician's assigned service center
+  getTechnicianServiceCenter: async (technicianId) => {
+    try {
+      if (!mongoose.Types.ObjectId.isValid(technicianId)) {
+        throw new Error("Invalid technician ID");
+      }
+
+      // Find the most recent schedule for this technician
+      const schedule = await TechnicianSchedule.findOne({ technicianId })
+        .sort({ createdAt: -1 })
+        .populate("centerId", "name address");
+
+      if (!schedule) {
+        return null; // Technician is not assigned to any center
+      }
+
+      return schedule.centerId;
+    } catch (error) {
+      throw new Error(
+        `Error fetching technician's service center: ${error.message}`
+      );
     }
   },
 };
