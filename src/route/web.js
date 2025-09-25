@@ -65,6 +65,12 @@ let initWebRoutes = (app) => {
     upload.single("avatar"),
     userController.uploadAvatar
   );
+  router.get(
+    "/api/users",
+    protect,
+    authorize("admin"),
+    userController.getAllUsers
+  );
   router.delete(
     "/api/user/:id",
     protect,
@@ -851,7 +857,6 @@ let initWebRoutes = (app) => {
     technicianCertificateController.getCertificatesByTechnician
   );
 
-
   // ===== TECHNICIAN SCHEDULE =====
 
   router.get(
@@ -885,8 +890,6 @@ let initWebRoutes = (app) => {
     authorize("admin", "technician"),
     technicianScheduleController.recordCheckOut
   );
-
-
 
   // leave requests
   router.post(
@@ -934,10 +937,6 @@ let initWebRoutes = (app) => {
     workProgressTrackingController.completeMaintenance
   );
 
-
-
-
-
   // ===== FEEDBACK =====
   router.get(
     "/api/appointments/:appointmentId/feedback",
@@ -959,12 +958,6 @@ let initWebRoutes = (app) => {
     protect,
     feedbackController.deleteMyFeedback
   );
-
-
-
-
-
-
 
   // ===== PARTS =====
   router.get(

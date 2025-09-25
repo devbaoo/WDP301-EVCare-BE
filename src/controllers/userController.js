@@ -88,8 +88,6 @@ const uploadAvatar = async (req, res) => {
   }
 };
 
-
-
 // Delete user (admin only)
 const deleteUser = async (req, res) => {
   try {
@@ -130,6 +128,25 @@ const updateUserRole = async (req, res) => {
   }
 };
 
+// Get all users (admin only)
+const getAllUsers = async (req, res) => {
+  try {
+    const filters = req.query;
+    const result = await userService.getAllUsers(filters);
+    return res.status(result.statusCode).json({
+      success: result.success,
+      message: result.message,
+      data: result.data,
+    });
+  } catch (error) {
+    console.error("Get all users error:", error);
+    res.status(500).json({
+      success: false,
+      message: "Server error",
+    });
+  }
+};
+
 // Get all staff (staff, technician, admin)
 const getAllStaff = async (req, res) => {
   try {
@@ -154,5 +171,6 @@ export default {
   uploadAvatar,
   deleteUser,
   updateUserRole,
+  getAllUsers,
   getAllStaff,
 };

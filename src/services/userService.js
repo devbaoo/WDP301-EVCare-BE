@@ -164,6 +164,72 @@ const updateUserRole = async (userId, newRole) => {
   }
 };
 
+// Lấy tất cả người dùng (admin only)
+const getAllUsers = async (filters = {}) => {
+  try {
+    const {
+      role,
+      search,
+      page = 1,
+      limit = 10,
+      sortBy = "createdAt",
+      sortOrder = "desc",
+    } = filters;
+
+    // Build query
+    const query = { deleted: { $ne: true } };
+
+    // Filter by role if provided
+    if (role) {
+      query.role = role;
+    }
+
+    // Search by name, email, or username
+    if (search) {
+      query.$or = [
+        { fullName: new RegExp(search, "i") },
+        { email: new RegExp(search, "i") },
+        { username: new RegExp(search, "i") },
+      ];
+    }
+
+    // Build sort
+    const sort = {};
+    sort[sortBy] = sortOrder === "desc" ? -1 : 1;
+
+    // Execute query with pagination
+    const users = await User.find(query)
+      .select("-password")
+      .sort(sort)
+      .limit(limit * 1)
+      .skip((page - 1) * limit);
+
+    const total = await User.countDocuments(query);
+
+    return {
+      success: true,
+      statusCode: 200,
+      message: "Lấy danh sách người dùng thành công",
+      data: {
+        users,
+        pagination: {
+          currentPage: page,
+          totalPages: Math.ceil(total / limit),
+          totalItems: total,
+          itemsPerPage: limit,
+        },
+      },
+    };
+  } catch (error) {
+    console.error("Get all users error:", error);
+    return {
+      success: false,
+      statusCode: 500,
+      message: "Lỗi khi lấy danh sách người dùng",
+    };
+  }
+};
+
 // Lấy tất cả nhân viên (staff, technician, admin)
 const getAllStaff = async () => {
   try {
@@ -193,5 +259,6 @@ export default {
   updateUserProfile,
   softDeleteUser,
   updateUserRole,
+  getAllUsers,
   getAllStaff,
 };
