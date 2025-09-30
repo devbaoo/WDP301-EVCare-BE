@@ -5,9 +5,9 @@ import jwtConfig from "../config/jwtConfig.js";
 import moment from "moment-timezone";
 import emailService from "./emailService.js";
 
-
 const register = async (userData, baseUrl) => {
-  const { username, email, password, fullName, phone, address, avatar } = userData;
+  const { username, email, password, fullName, phone, address, avatar } =
+    userData;
 
   // Check existing email or username
   const existingUser = await User.findOne({ $or: [{ email }, { username }] });
@@ -185,19 +185,41 @@ const resendVerificationEmail = async (email, baseUrl) => {
   try {
     const user = await User.findOne({ email });
     if (!user) {
-      return { success: false, statusCode: 404, message: "Không tìm thấy người dùng" };
+      return {
+        success: false,
+        statusCode: 404,
+        message: "Không tìm thấy người dùng",
+      };
     }
     if (user.isVerified) {
-      return { success: false, statusCode: 400, message: "Người dùng đã được xác thực" };
+      return {
+        success: false,
+        statusCode: 400,
+        message: "Người dùng đã được xác thực",
+      };
     }
     const emailResult = await emailService.sendVerificationEmail(user, baseUrl);
     if (!emailResult.success) {
-      return { success: false, statusCode: 500, message: "Không thể gửi email xác thực", error: emailResult.error };
+      return {
+        success: false,
+        statusCode: 500,
+        message: "Không thể gửi email xác thực",
+        error: emailResult.error,
+      };
     }
-    return { success: true, statusCode: 200, message: "Đã gửi email xác thực thành công" };
+    return {
+      success: true,
+      statusCode: 200,
+      message: "Đã gửi email xác thực thành công",
+    };
   } catch (error) {
     console.error("Resend verification error:", error);
-    return { success: false, statusCode: 500, message: "Lỗi máy chủ", error: error.message };
+    return {
+      success: false,
+      statusCode: 500,
+      message: "Lỗi máy chủ",
+      error: error.message,
+    };
   }
 };
 
@@ -356,7 +378,7 @@ const refreshToken = async (refreshToken) => {
   }
 };
 
-// Đăng nhập Google với dữ liệu user từ frontend
+// Đăng nhập Google với dữ liệu user từ frontend (phù hợp schema hiện tại)
 const googleLogin = async (userData) => {
   try {
     const { email, name, picture } = userData;
@@ -370,56 +392,49 @@ const googleLogin = async (userData) => {
     }
 
     // Tìm user theo email
-    let user = await User.findOne({ email }).populate("level", "name");
-    if (!user) {
-      // Nếu chưa có user, tạo mới
-      const [firstName, ...lastNameArr] = name ? name.split(" ") : ["", ""];
-      const lastName = lastNameArr.join(" ");
+    let user = await User.findOne({ email });
 
-      // Tạo một password hash ngẫu nhiên cho Google user
+    if (!user) {
+      // Nếu chưa có user, tạo mới phù hợp với UserSchema
       const salt = await bcrypt.genSalt(10);
-      const randomPassword = Math.random().toString(36).slice(-8);
+      const randomPassword = Math.random().toString(36).slice(-10);
       const hashedPassword = await bcrypt.hash(randomPassword, salt);
 
+      // Tạo username từ email (trước ký tự @)
+      const baseUsername = (email.split("@")[0] || "google_user").toLowerCase();
+
       user = new User({
-        firstName: firstName || "Google",
-        lastName: lastName || "User",
+        username: baseUsername,
+        fullName: name || baseUsername,
         email,
         password: hashedPassword,
-        isVerify: true,
+        isVerified: true,
         avatar: picture || "",
+        role: "customer",
       });
+
       await user.save();
-
-      // Populate level after saving
-      user = await User.findById(user._id).populate("level", "name");
-    }
-
-    // Cập nhật streak logic tương tự như login thường
-    const now = moment().tz("Asia/Ho_Chi_Minh");
-    const today = now.clone().startOf("day");
-
-    if (user.lastLoginDate) {
-      const lastLogin = moment(user.lastLoginDate)
-        .tz("Asia/Ho_Chi_Minh")
-        .startOf("day");
-
-      const dayDiff = today.diff(lastLogin, "days");
-
-      if (dayDiff === 1) {
-        user.streak += 1;
-      } else if (dayDiff > 1) {
-        user.streak = 1;
-      }
     } else {
-      user.streak = 1;
+      // Cập nhật thông tin cơ bản nếu còn thiếu
+      let changed = false;
+      if (!user.fullName && name) {
+        user.fullName = name;
+        changed = true;
+      }
+      if (!user.avatar && picture) {
+        user.avatar = picture;
+        changed = true;
+      }
+      if (!user.isVerified) {
+        user.isVerified = true;
+        changed = true;
+      }
+      if (changed) await user.save();
     }
-
-    user.lastLoginDate = now.toDate();
-    await user.save();
 
     // Đăng nhập thành công, tạo token
-    let { accessToken, refreshToken } = generateToken(user);
+    const { accessToken, refreshToken } = generateToken(user);
+
     return {
       success: true,
       statusCode: 200,
@@ -428,17 +443,14 @@ const googleLogin = async (userData) => {
       refreshToken,
       user: {
         id: user._id,
-        firstName: user.firstName,
-        lastName: user.lastName,
+        username: user.username,
+        fullName: user.fullName,
         email: user.email,
+        phone: user.phone,
+        address: user.address,
         role: user.role,
-        isVerify: user.isVerify,
         avatar: user.avatar,
-        streak: user.streak,
-        lives: user.lives,
-        xp: user.xp,
-        userLevel: user.userLevel,
-        level: user.level ? user.level.name : null,
+        isVerified: user.isVerified,
       },
       needVerification: false,
     };
