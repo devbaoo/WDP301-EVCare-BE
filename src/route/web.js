@@ -261,6 +261,13 @@ let initWebRoutes = (app) => {
     authorize("admin", "staff"),
     bookingController.getPaidAwaitingConfirmation
   );
+  // List pending offline payment bookings awaiting staff confirmation
+  router.get(
+    "/api/bookings/pending-offline-payment",
+    protect,
+    authorize("admin", "staff"),
+    bookingController.getPendingOfflinePaymentBookings
+  );
   // List confirmed bookings (for work-progress intake)
   router.get(
     "/api/bookings/confirmed",
