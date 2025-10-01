@@ -143,6 +143,31 @@ const getConfirmedBookings = async (req, res) => {
         res.status(500).json({ success: false, message: "Server error" });
     }
 };
+// Lấy các booking thanh toán offline đang chờ staff xác nhận
+const getPendingOfflinePaymentBookings = async (req, res) => {
+    try {
+        const filters = {
+            serviceCenterId: req.query.serviceCenterId,
+            dateFrom: req.query.dateFrom,
+            dateTo: req.query.dateTo,
+            page: Number(req.query.page || 1),
+            limit: Number(req.query.limit || 10),
+            sortBy: req.query.sortBy || "createdAt",
+            sortOrder: req.query.sortOrder || "desc",
+        };
+
+        const result = await bookingService.getPendingOfflinePaymentBookings(filters);
+        return res.status(result.statusCode).json({
+            success: result.success,
+            message: result.message,
+            data: result.data,
+        });
+    } catch (error) {
+        console.error("Get pending offline payment bookings error:", error);
+        res.status(500).json({ success: false, message: "Server error" });
+    }
+};
+
 // Lấy các booking đã thanh toán và chờ xác nhận (admin/staff)
 const getPaidAwaitingConfirmation = async (req, res) => {
     try {
@@ -269,6 +294,7 @@ export default {
     createBooking,
     confirmBooking,
     getPaidAwaitingConfirmation,
+    getPendingOfflinePaymentBookings,
     getConfirmedBookings,
     getCustomerBookings,
     cancelBooking,

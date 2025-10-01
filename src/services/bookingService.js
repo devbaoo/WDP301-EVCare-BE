@@ -211,7 +211,7 @@ const getAvailableSlots = async (serviceCenterId, serviceTypeId, date) => {
       shortKeys[dayIndex].toUpperCase(),
       longKeys[dayIndex].toUpperCase(),
       shortKeys[dayIndex].charAt(0).toUpperCase() +
-        shortKeys[dayIndex].slice(1),
+      shortKeys[dayIndex].slice(1),
       longKeys[dayIndex].charAt(0).toUpperCase() + longKeys[dayIndex].slice(1),
     ];
 
@@ -260,8 +260,8 @@ const getAvailableSlots = async (serviceCenterId, serviceTypeId, date) => {
       const endTimeString = `${Math.floor((time + serviceDuration) / 60)
         .toString()
         .padStart(2, "0")}:${((time + serviceDuration) % 60)
-        .toString()
-        .padStart(2, "0")}`;
+          .toString()
+          .padStart(2, "0")}`;
 
       // Check if slot conflicts with existing appointments
       const hasConflict = existingAppointments.some((appointment) => {
@@ -1010,6 +1010,89 @@ const getPaidAwaitingConfirmation = async (filters = {}) => {
   }
 };
 
+// Danh sách booking thanh toán offline đang chờ staff xác nhận
+const getPendingOfflinePaymentBookings = async (filters = {}) => {
+  try {
+    const {
+      serviceCenterId,
+      dateFrom,
+      dateTo,
+      page = 1,
+      limit = 10,
+      sortBy = "createdAt",
+      sortOrder = "desc",
+    } = filters;
+
+    // Logic: lấy các booking có payment status = "pending" và chưa bị auto-cancel
+    const query = {
+      "payment.status": "pending",
+      status: { $in: ["pending_confirmation", "pending"] },
+      // Chưa được staff confirm
+      $or: [
+        { "confirmation.isConfirmed": { $ne: true } },
+        { confirmation: { $exists: false } },
+      ],
+    };
+
+    if (serviceCenterId) query.serviceCenter = serviceCenterId;
+
+    if (dateFrom || dateTo) {
+      query["appointmentTime.date"] = {};
+      if (dateFrom) query["appointmentTime.date"].$gte = new Date(dateFrom);
+      if (dateTo) {
+        const to = new Date(dateTo);
+        to.setHours(23, 59, 59, 999);
+        query["appointmentTime.date"].$lte = to;
+      }
+    }
+
+    const sort = {};
+    sort[sortBy] = sortOrder === "desc" ? -1 : 1;
+
+    const appointments = await Appointment.find(query)
+      .populate([
+        { path: "customer", select: "fullName phone email" },
+        {
+          path: "vehicle",
+          select: "vehicleInfo",
+          populate: {
+            path: "vehicleInfo.vehicleModel",
+            select: "brand modelName",
+          },
+        },
+        { path: "serviceCenter", select: "name address" },
+        { path: "serviceType", select: "name pricing" },
+      ])
+      .sort(sort)
+      .limit(limit * 1)
+      .skip((page - 1) * limit);
+
+    const total = await Appointment.countDocuments(query);
+
+    return {
+      success: true,
+      statusCode: 200,
+      message: "Lấy danh sách booking thanh toán offline - chờ xác nhận thành công",
+      data: {
+        appointments,
+        pagination: {
+          currentPage: page,
+          totalPages: Math.ceil(total / limit),
+          totalItems: total,
+          itemsPerPage: limit,
+        },
+      },
+    };
+  } catch (error) {
+    console.error("Get pending offline payment bookings error:", error);
+    return {
+      success: false,
+      statusCode: 500,
+      message: "Lỗi khi lấy danh sách booking thanh toán offline chờ xác nhận",
+    };
+  }
+};
+
 // Danh sách booking đã được confirm (đã xác nhận) để đẩy vào work-progress
 const getConfirmedBookings = async (filters = {}) => {
   try {
@@ -1133,7 +1216,7 @@ const confirmBooking = async (bookingId, staffId) => {
         by: staffId,
         at: new Date(),
       });
-    } catch (_) {}
+    } catch (_) { }
     appointment.status = "confirmed";
     appointment.confirmation = appointment.confirmation || {};
     appointment.confirmation.isConfirmed = true;
@@ -1168,5 +1251,6 @@ export default {
   rescheduleBooking,
   getBookingDetails,
   getPaidAwaitingConfirmation,
+  getPendingOfflinePaymentBookings,
   getConfirmedBookings,
 };
