@@ -1041,8 +1041,9 @@ const getPendingOfflinePaymentBookings = async (filters = {}) => {
       sortOrder = "desc",
     } = filters;
 
-    // Logic: lấy các booking có payment status = "pending" và chưa bị auto-cancel
+    // Logic: lấy các booking có payment method = "cash" và status = "pending" và chưa bị auto-cancel
     const query = {
+      "payment.method": "cash",
       "payment.status": "pending",
       status: { $in: ["pending_confirmation", "pending"] },
       // Chưa được staff confirm
@@ -1204,13 +1205,17 @@ const confirmBooking = async (bookingId, staffId) => {
       };
     }
 
-    // Nếu có upfront (amount>0) thì phải paid
+    // Kiểm tra yêu cầu thanh toán upfront (deposit/inspection fee)
     const requiresUpfront = (appointment?.payment?.amount || 0) > 0;
-    if (requiresUpfront && appointment.payment.status !== "paid") {
+    const isOfflinePayment = appointment?.payment?.method === "cash";
+
+    // Với upfront payment (deposit/inspection fee): phải thanh toán trước khi confirm
+    // Với offline payment: chỉ cần xác nhận lịch hẹn, thanh toán chính sẽ ở cuối workflow
+    if (requiresUpfront && !isOfflinePayment && appointment.payment.status !== "paid") {
       return {
         success: false,
         statusCode: 400,
-        message: "Chưa thanh toán đặt cọc/phí kiểm tra",
+        message: "Chưa thanh toán phí đặt cọc/kiểm tra online",
       };
     }
 
@@ -1235,17 +1240,22 @@ const confirmBooking = async (bookingId, staffId) => {
         at: new Date(),
       });
     } catch (_) { }
+
     appointment.status = "confirmed";
     appointment.confirmation = appointment.confirmation || {};
     appointment.confirmation.isConfirmed = true;
     appointment.confirmation.confirmedAt = new Date();
     appointment.confirmation.confirmedBy = staffId;
+
+    // NOTE: KHÔNG cập nhật payment status ở đây
+    // Staff confirm chỉ là xác nhận lịch hẹn, thanh toán chính sẽ ở cuối workflow
+
     await appointment.save();
 
     return {
       success: true,
       statusCode: 200,
-      message: "Xác nhận booking thành công",
+      message: "Xác nhận lịch hẹn thành công",
       data: appointment,
     };
   } catch (error) {
