@@ -96,7 +96,12 @@ GET /api/bookings/pending-offline-payment
 **Mô tả:**
 API này dành cho Staff/Admin để lấy danh sách các booking có thanh toán offline (cash) đang ở trạng thái pending và chưa được staff confirm. Điều này giúp staff có thể xem và xác nhận các booking offline trước khi hệ thống tự động cancel sau 30 phút.
 
-**Query Parameters:**
+**Điều kiện lọc:**
+
+- `payment.method = "cash"` (thanh toán bằng tiền mặt)
+- `payment.status = "pending"` (chưa thanh toán)
+- `status` trong ["pending_confirmation", "pending"] (chờ xác nhận)
+- `confirmation.isConfirmed != true` (chưa được staff confirm)**Query Parameters:**
 
 - `serviceCenterId` (optional): ID trung tâm dịch vụ
 - `dateFrom` (optional): Từ ngày (YYYY-MM-DD)
@@ -174,16 +179,33 @@ API này dành cho Staff/Admin để lấy danh sách các booking có thanh to�
 POST /api/booking/:bookingId/confirm
 ```
 
+**Mô tả:**
+API này cho phép staff/admin xác nhận lịch hẹn với khách hàng. **ĐÂY KHÔNG PHẢI là bước thanh toán chính**.
+
+**Mục đích:** Xác nhận rằng trung tâm sẽ phục vụ khách hàng vào thời gian đã đặt.
+
+**Thanh toán chính:** Sẽ diễn ra ở cuối workflow sau khi hoàn thành service.
+
 **Path Parameters:**
 
 - `bookingId`: ID của booking cần xác nhận
+
+**Logic xử lý:**
+
+1. **Booking có phí đặt cọc/kiểm tra (`payment.amount > 0`):**
+
+   - **Online payment:** Phải thanh toán phí này trước khi confirm
+   - **Offline payment:** Staff có thể confirm ngay, phí này sẽ thu khi khách đến
+
+2. **Booking không có phí đặt cọc (`payment.amount = 0`):**
+   - Staff confirm trực tiếp
 
 **Response:**
 
 ```json
 {
   "success": true,
-  "message": "Xác nhận booking thành công",
+  "message": "Xác nhận lịch hẹn thành công",
   "data": {
     "_id": "booking_id",
     "status": "confirmed",
@@ -193,6 +215,31 @@ POST /api/booking/:bookingId/confirm
       "confirmedBy": "staff_user_id"
     }
   }
+}
+```
+
+**Error Responses:**
+
+```json
+// Booking online chưa thanh toán phí đặt cọc/kiểm tra
+{
+  "success": false,
+  "message": "Chưa thanh toán phí đặt cọc/kiểm tra online",
+  "statusCode": 400
+}
+
+// Booking không tồn tại
+{
+  "success": false,
+  "message": "Không tìm thấy booking",
+  "statusCode": 404
+}
+
+// Trung tâm ngưng hoạt động
+{
+  "success": false,
+  "message": "Trung tâm đang tạm ngưng hoạt động",
+  "statusCode": 400
 }
 ```
 
@@ -237,22 +284,38 @@ GET /api/bookings/confirmed
 
 ### Workflow xử lý booking:
 
-1. **Online Payment Bookings:**
+1. **Online Payment Bookings (có phí đặt cọc/kiểm tra):**
 
-   - Customer tạo booking → thanh toán online
-   - Payment success → status = "confirmed"
+   - Customer tạo booking → thanh toán phí đặt cọc/kiểm tra online
+   - Payment success → có thể confirm được
    - Staff dùng `/api/bookings/awaiting-confirmation` để xem và confirm
+   - **Thanh toán chính:** Diễn ra sau khi hoàn thành service
 
-2. **Offline Payment Bookings:**
+2. **Offline Payment Bookings (có phí đặt cọc/kiểm tra):**
 
-   - Customer tạo booking → chọn thanh toán offline (cash)
+   - Customer tạo booking → chọn thanh toán offline
    - Status = "pending_confirmation", payment.status = "pending"
    - Staff dùng `/api/bookings/pending-offline-payment` để xem và confirm
    - **Quan trọng:** Phải confirm trong 30 phút, nếu không sẽ bị auto-cancel
+   - **Thanh toán chính:** Diễn ra sau khi hoàn thành service
 
-3. **Auto-cancel system:**
-   - Hệ thống tự động cancel các booking pending quá 30 phút
-   - Chỉ áp dụng với offline payment bookings
+3. **Free Bookings (không có phí đặt cọc):**
+
+   - Customer tạo booking → không cần thanh toán trước
+   - Staff có thể confirm ngay
+   - **Thanh toán chính:** Diễn ra sau khi hoàn thành service (nếu có)
+
+4. **Auto-cancel system:**
+   - Hệ thống tự động cancel các booking pending có phí đặt cọc quá 30 phút
+   - Chỉ áp dụng với offline payment bookings có phí đặt cọc
+
+## 🔄 Flow hoàn chỉnh
+
+```
+Customer tạo booking → Staff confirm lịch hẹn → Thực hiện service → Thanh toán chính → Hoàn thành
+      ↓                      ↓                      ↓                  ↓               ↓
+pending_confirmation → confirmed → in_progress → maintenance_completed → payment_pending → completed
+```
 
 ## 🔄 Trạng thái Booking
 
