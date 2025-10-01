@@ -3,9 +3,43 @@ import WorkProgressTracking from "../models/workProgressTracking.js";
 import User from "../models/user.js";
 import Appointment from "../models/appointment.js";
 import ServiceRecord from "../models/serviceRecord.js";
+import TechnicianSchedule from "../models/technicianSchedule.js";
 import invoiceService from "./invoiceService.js";
 
 const workProgressTrackingService = {
+  // Internal helper: set technician availability to available for the appointment date
+  async _setTechnicianAvailableForAppointment(technicianId, appointmentId) {
+    try {
+      if (
+        !mongoose.Types.ObjectId.isValid(technicianId) ||
+        !mongoose.Types.ObjectId.isValid(appointmentId)
+      ) {
+        return;
+      }
+      const appointment = await Appointment.findById(appointmentId).select(
+        "appointmentTime.date"
+      );
+      if (!appointment || !appointment.appointmentTime?.date) return;
+
+      // Normalize date range for the work day
+      const workDate = new Date(appointment.appointmentTime.date);
+      const startOfDay = new Date(workDate);
+      startOfDay.setHours(0, 0, 0, 0);
+      const endOfDay = new Date(workDate);
+      endOfDay.setHours(23, 59, 59, 999);
+
+      await TechnicianSchedule.findOneAndUpdate(
+        {
+          technicianId,
+          workDate: { $gte: startOfDay, $lte: endOfDay },
+        },
+        { $set: { availability: "available" } },
+        { new: true }
+      );
+    } catch (_) {
+      // best-effort; do not block main flow
+    }
+  },
   // Get all progress records with optional filtering
   getAllProgressRecords: async (filters = {}) => {
     try {
@@ -251,6 +285,20 @@ const workProgressTrackingService = {
         .populate("appointmentId")
         .populate("serviceRecordId");
 
+      // When completed, free up technician availability for that day
+      if (
+        status === "completed" &&
+        updatedRecord?.technicianId &&
+        updatedRecord?.appointmentId
+      ) {
+        try {
+          await workProgressTrackingService._setTechnicianAvailableForAppointment(
+            updatedRecord.technicianId._id || updatedRecord.technicianId,
+            updatedRecord.appointmentId._id || updatedRecord.appointmentId
+          );
+        } catch (_) {}
+      }
+
       return updatedRecord;
     } catch (error) {
       throw new Error(`Error updating progress status: ${error.message}`);
@@ -314,8 +362,12 @@ const workProgressTrackingService = {
         // Append status history for audit
         try {
           appointment.statusHistory = appointment.statusHistory || [];
-          appointment.statusHistory.push({ from: appointment.status, to: 'inspection_completed', at: new Date() });
-        } catch (_) { }
+          appointment.statusHistory.push({
+            from: appointment.status,
+            to: "inspection_completed",
+            at: new Date(),
+          });
+        } catch (_) {}
         if (updateData.currentStatus === "quote_provided") {
           appointment.status = "quote_provided";
           appointment.inspectionAndQuote = {
@@ -400,7 +452,14 @@ const workProgressTrackingService = {
       );
       if (appointment) {
         if (response.status === "approved") {
-          try { appointment.statusHistory = appointment.statusHistory || []; appointment.statusHistory.push({ from: appointment.status, to: 'quote_approved', at: new Date() }); } catch (_) { }
+          try {
+            appointment.statusHistory = appointment.statusHistory || [];
+            appointment.statusHistory.push({
+              from: appointment.status,
+              to: "quote_approved",
+              at: new Date(),
+            });
+          } catch (_) {}
           appointment.status = "quote_approved";
           appointment.inspectionAndQuote.quoteStatus = "approved";
           appointment.inspectionAndQuote.customerResponseAt = new Date();
@@ -409,27 +468,40 @@ const workProgressTrackingService = {
           // Auto-create reservation from quoteDetails if available
           try {
             const quoteDetails = appointment.inspectionAndQuote?.quoteDetails;
-            if (quoteDetails && Array.isArray(quoteDetails.items) && quoteDetails.items.length > 0) {
+            if (
+              quoteDetails &&
+              Array.isArray(quoteDetails.items) &&
+              quoteDetails.items.length > 0
+            ) {
               const items = quoteDetails.items
-                .filter(it => it.partId && it.quantity > 0)
-                .map(it => ({ partId: it.partId, quantity: it.quantity }));
+                .filter((it) => it.partId && it.quantity > 0)
+                .map((it) => ({ partId: it.partId, quantity: it.quantity }));
               if (items.length > 0) {
-                const { default: reservationService } = await import('./inventoryReservationService.js');
+                const { default: reservationService } = await import(
+                  "./inventoryReservationService.js"
+                );
                 await reservationService.hold({
                   appointmentId: appointment._id,
                   serviceCenterId: appointment.serviceCenter,
                   items,
                   expiresAt: new Date(Date.now() + 48 * 60 * 60 * 1000),
-                  notes: 'Auto-reservation from approved quote',
+                  notes: "Auto-reservation from approved quote",
                 });
               }
             }
           } catch (e) {
             // eslint-disable-next-line no-console
-            console.error('Auto reservation from quote error:', e);
+            console.error("Auto reservation from quote error:", e);
           }
         } else {
-          try { appointment.statusHistory = appointment.statusHistory || []; appointment.statusHistory.push({ from: appointment.status, to: 'quote_rejected', at: new Date() }); } catch (_) { }
+          try {
+            appointment.statusHistory = appointment.statusHistory || [];
+            appointment.statusHistory.push({
+              from: appointment.status,
+              to: "quote_rejected",
+              at: new Date(),
+            });
+          } catch (_) {}
           appointment.status = "quote_rejected";
           appointment.inspectionAndQuote.quoteStatus = "rejected";
           appointment.inspectionAndQuote.customerResponseAt = new Date();
@@ -484,7 +556,14 @@ const workProgressTrackingService = {
         progressRecord.appointmentId
       );
       if (appointment) {
-        try { appointment.statusHistory = appointment.statusHistory || []; appointment.statusHistory.push({ from: appointment.status, to: 'maintenance_in_progress', at: new Date() }); } catch (_) { }
+        try {
+          appointment.statusHistory = appointment.statusHistory || [];
+          appointment.statusHistory.push({
+            from: appointment.status,
+            to: "maintenance_in_progress",
+            at: new Date(),
+          });
+        } catch (_) {}
         appointment.status = "maintenance_in_progress";
         await appointment.save();
       }
@@ -536,7 +615,14 @@ const workProgressTrackingService = {
         progressRecord.appointmentId
       );
       if (appointment) {
-        try { appointment.statusHistory = appointment.statusHistory || []; appointment.statusHistory.push({ from: appointment.status, to: 'maintenance_completed', at: new Date() }); } catch (_) { }
+        try {
+          appointment.statusHistory = appointment.statusHistory || [];
+          appointment.statusHistory.push({
+            from: appointment.status,
+            to: "maintenance_completed",
+            at: new Date(),
+          });
+        } catch (_) {}
         appointment.status = "maintenance_completed";
         appointment.completion = {
           isCompleted: true,
@@ -549,7 +635,10 @@ const workProgressTrackingService = {
 
         // Auto-create invoice (draft) and send via email (no PDF)
         try {
-          const invResult = await invoiceService.createFromAppointment(appointment._id, {});
+          const invResult = await invoiceService.createFromAppointment(
+            appointment._id,
+            {}
+          );
           if (invResult?.success && invResult.data?._id) {
             await invoiceService.sendInvoiceEmail(invResult.data._id);
           }
@@ -568,6 +657,16 @@ const workProgressTrackingService = {
         .populate("technicianId", "firstName lastName email phoneNumber")
         .populate("appointmentId")
         .populate("serviceRecordId");
+
+      // Free up technician availability for that day after completion
+      if (updatedRecord?.technicianId && updatedRecord?.appointmentId) {
+        try {
+          await workProgressTrackingService._setTechnicianAvailableForAppointment(
+            updatedRecord.technicianId._id || updatedRecord.technicianId,
+            updatedRecord.appointmentId._id || updatedRecord.appointmentId
+          );
+        } catch (_) {}
+      }
 
       return updatedRecord;
     } catch (error) {
