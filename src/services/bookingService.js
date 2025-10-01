@@ -2,6 +2,7 @@ import Vehicle from "../models/vehicle.js";
 import Appointment from "../models/appointment.js";
 import ServiceCenter from "../models/serviceCenter.js";
 import ServiceType from "../models/serviceType.js";
+import StaffAssignment from "../models/staffAssignment.js";
 import User from "../models/user.js";
 import emailService from "./emailService.js";
 import payosService from "./payosService.js";
@@ -131,9 +132,26 @@ const getAvailableSlots = async (serviceCenterId, serviceTypeId, date) => {
     // Nếu không có serviceType, dùng thời lượng mặc định
 
     // Get technicians for this service center
-    const technicians = serviceCenter.staff.filter(
-      (staff) => staff.role === "technician" && staff.isActive
-    );
+    let technicians = Array.isArray(serviceCenter.staff)
+      ? serviceCenter.staff.filter(
+          (staff) => staff.role === "technician" && staff.isActive
+        )
+      : [];
+
+    // Fallback: hydrate from StaffAssignment if center.staff is empty or missing
+    if (!technicians || technicians.length === 0) {
+      const assignments = await StaffAssignment.find({
+        centerId: serviceCenterId,
+        isActive: true,
+        position: "technician",
+      }).populate("userId", "username fullName email avatar role");
+
+      technicians = assignments.map((a) => ({
+        user: a.userId,
+        role: a.position,
+        isActive: a.isActive,
+      }));
+    }
 
     if (technicians.length === 0) {
       return {
