@@ -1,59 +1,59 @@
-# Parts Management API Documentation
+# Tài Liệu API Quản Lý Phụ Tùng
 
-This document provides comprehensive documentation for the Parts Management API endpoints, including parts inventory management and AI-driven stock optimization features.
+Tài liệu này cung cấp tài liệu toàn diện cho các endpoint API Quản lý Phụ tùng, bao gồm quản lý tồn kho phụ tùng và các tính năng tối ưu hóa kho hàng dựa trên AI.
 
-## Table of Contents
+## Mục Lục
 
-1. [Authentication](#authentication)
-2. [Parts Management](#parts-management)
-3. [Inventory Management](#inventory-management)
-4. [AI Prediction and Optimization](#ai-prediction-and-optimization)
-5. [Workflow Examples](#workflow-examples)
+1. [Xác Thực](#xác-thực)
+2. [Quản Lý Phụ Tùng](#quản-lý-phụ-tùng)
+3. [Quản Lý Tồn Kho](#quản-lý-tồn-kho)
+4. [Dự Đoán và Tối Ưu Hóa AI](#dự-đoán-và-tối-ưu-hóa-ai)
+5. [Ví Dụ Quy Trình](#ví-dụ-quy-trình)
 
-## Authentication
+## Xác Thực
 
-All API endpoints require authentication using JWT tokens. Include the token in the Authorization header:
+Tất cả các endpoint API đều yêu cầu xác thực bằng JWT token. Bao gồm token trong header Authorization:
 
 ```
 Authorization: Bearer <your_token>
 ```
 
-Role-based access control is implemented:
+Hệ thống kiểm soát truy cập dựa trên vai trò được triển khai:
 
-- `admin`: Full access to all endpoints
-- `staff`: Access to view parts, inventory, and create transactions
-- `technician`: Limited access to view compatible parts
+- `admin`: Truy cập đầy đủ vào tất cả các endpoint
+- `staff`: Truy cập để xem phụ tùng, tồn kho và tạo giao dịch
+- `technician`: Truy cập hạn chế để xem phụ tùng tương thích
 
-## Parts Management
+## Quản Lý Phụ Tùng
 
-### Get All Parts
+### Lấy Tất Cả Phụ Tùng
 
-Retrieves a list of all parts with optional filtering.
+Lấy danh sách tất cả phụ tùng với tùy chọn lọc.
 
 - **URL**: `/api/parts`
 - **Method**: `GET`
-- **Auth Required**: Yes
-- **Permissions**: admin, staff
-- **Query Parameters**:
-  - `partNumber`: Filter by part number (partial match)
-  - `partName`: Filter by part name (partial match)
-  - `category`: Filter by category (exact match)
-  - `isCritical`: Filter by critical status (true/false)
-  - `compatibleModel`: Filter by compatible vehicle model ID
+- **Yêu Cầu Xác Thực**: Có
+- **Quyền**: admin, staff
+- **Tham Số Truy Vấn**:
+  - `partNumber`: Lọc theo số phụ tùng (khớp một phần)
+  - `partName`: Lọc theo tên phụ tùng (khớp một phần)
+  - `category`: Lọc theo danh mục (khớp chính xác)
+  - `isCritical`: Lọc theo trạng thái quan trọng (true/false)
+  - `compatibleModel`: Lọc theo ID mẫu xe tương thích
 
-**Response Example**:
+**Ví Dụ Phản Hồi**:
 
 ```json
 {
   "success": true,
-  "message": "Parts retrieved successfully",
+  "message": "Lấy phụ tùng thành công",
   "data": [
     {
       "_id": "60d21b4667d0d8992e610c85",
       "partNumber": "BT-12345",
-      "partName": "EV Battery Module",
+      "partName": "Mô-đun Pin EV",
       "category": "battery",
-      "description": "48V battery module for electric vehicles",
+      "description": "Mô-đun pin 48V cho xe điện",
       "compatibleModels": [
         {
           "_id": "60d21b4667d0d8992e610c80",
@@ -76,61 +76,61 @@ Retrieves a list of all parts with optional filtering.
 }
 ```
 
-### Get Part by ID
+### Lấy Phụ Tùng Theo ID
 
-Retrieves a specific part by its ID.
+Lấy một phụ tùng cụ thể theo ID của nó.
 
 - **URL**: `/api/parts/:id`
 - **Method**: `GET`
-- **Auth Required**: Yes
-- **Permissions**: admin, staff
-- **URL Parameters**:
-  - `id`: Part ID
+- **Yêu Cầu Xác Thực**: Có
+- **Quyền**: admin, staff
+- **Tham Số URL**:
+  - `id`: ID phụ tùng
 
-**Response Example**: Same as single part object from the list endpoint.
+**Ví Dụ Phản Hồi**: Giống như đối tượng phụ tùng đơn lẻ từ endpoint danh sách.
 
-### Get Parts by Category
+### Lấy Phụ Tùng Theo Danh Mục
 
-Retrieves parts filtered by category.
+Lấy phụ tùng được lọc theo danh mục.
 
 - **URL**: `/api/parts/category/:category`
 - **Method**: `GET`
-- **Auth Required**: Yes
-- **Permissions**: admin, staff
-- **URL Parameters**:
-  - `category`: Part category (e.g., "battery", "motor", "brake")
+- **Yêu Cầu Xác Thực**: Có
+- **Quyền**: admin, staff
+- **Tham Số URL**:
+  - `category`: Danh mục phụ tùng (ví dụ: "battery", "motor", "brake")
 
-**Response Example**: Same format as Get All Parts.
+**Ví Dụ Phản Hồi**: Cùng định dạng với Lấy Tất Cả Phụ Tùng.
 
-### Get Compatible Parts for Vehicle Model
+### Lấy Phụ Tùng Tương Thích Cho Mẫu Xe
 
-Retrieves parts compatible with a specific vehicle model.
+Lấy phụ tùng tương thích với một mẫu xe cụ thể.
 
 - **URL**: `/api/vehicle-models/:vehicleModelId/compatible-parts`
 - **Method**: `GET`
-- **Auth Required**: Yes
-- **Permissions**: admin, staff, technician
-- **URL Parameters**:
-  - `vehicleModelId`: Vehicle model ID
+- **Yêu Cầu Xác Thực**: Có
+- **Quyền**: admin, staff, technician
+- **Tham Số URL**:
+  - `vehicleModelId`: ID mẫu xe
 
-**Response Example**: Same format as Get All Parts.
+**Ví Dụ Phản Hồi**: Cùng định dạng với Lấy Tất Cả Phụ Tùng.
 
-### Create Part
+### Tạo Phụ Tùng
 
-Creates a new part.
+Tạo một phụ tùng mới.
 
 - **URL**: `/api/parts`
 - **Method**: `POST`
-- **Auth Required**: Yes
-- **Permissions**: admin, staff
-- **Request Body**:
+- **Yêu Cầu Xác Thực**: Có
+- **Quyền**: admin, staff
+- **Nội Dung Yêu Cầu**:
 
 ```json
 {
   "partNumber": "BT-12345",
-  "partName": "EV Battery Module",
+  "partName": "Mô-đun Pin EV",
   "category": "battery",
-  "description": "48V battery module for electric vehicles",
+  "description": "Mô-đun pin 48V cho xe điện",
   "compatibleModels": ["60d21b4667d0d8992e610c80"],
   "unitPrice": 1200,
   "supplierInfo": {
@@ -142,18 +142,18 @@ Creates a new part.
 }
 ```
 
-**Response Example**:
+**Ví Dụ Phản Hồi**:
 
 ```json
 {
   "success": true,
-  "message": "Part created successfully",
+  "message": "Tạo phụ tùng thành công",
   "data": {
     "_id": "60d21b4667d0d8992e610c85",
     "partNumber": "BT-12345",
-    "partName": "EV Battery Module",
+    "partName": "Mô-đun Pin EV",
     "category": "battery",
-    "description": "48V battery module for electric vehicles",
+    "description": "Mô-đun pin 48V cho xe điện",
     "compatibleModels": ["60d21b4667d0d8992e610c80"],
     "unitPrice": 1200,
     "supplierInfo": {
@@ -168,74 +168,74 @@ Creates a new part.
 }
 ```
 
-### Update Part
+### Cập Nhật Phụ Tùng
 
-Updates an existing part.
+Cập nhật một phụ tùng hiện có.
 
 - **URL**: `/api/parts/:id`
 - **Method**: `PUT`
-- **Auth Required**: Yes
-- **Permissions**: admin, staff
-- **URL Parameters**:
-  - `id`: Part ID
-- **Request Body**: Same as Create Part (only include fields to update)
+- **Yêu Cầu Xác Thực**: Có
+- **Quyền**: admin, staff
+- **Tham Số URL**:
+  - `id`: ID phụ tùng
+- **Nội Dung Yêu Cầu**: Giống như Tạo Phụ Tùng (chỉ bao gồm các trường cần cập nhật)
 
-**Response Example**: Same format as Create Part.
+**Ví Dụ Phản Hồi**: Cùng định dạng với Tạo Phụ Tùng.
 
-### Delete Part
+### Xóa Phụ Tùng
 
-Deletes a part.
+Xóa một phụ tùng.
 
 - **URL**: `/api/parts/:id`
 - **Method**: `DELETE`
-- **Auth Required**: Yes
-- **Permissions**: admin only
-- **URL Parameters**:
-  - `id`: Part ID
+- **Yêu Cầu Xác Thực**: Có
+- **Quyền**: chỉ admin
+- **Tham Số URL**:
+  - `id`: ID phụ tùng
 
-**Response Example**:
+**Ví Dụ Phản Hồi**:
 
 ```json
 {
   "success": true,
-  "message": "Part deleted successfully"
+  "message": "Xóa phụ tùng thành công"
 }
 ```
 
-## Inventory Management
+## Quản Lý Tồn Kho
 
-### Get All Inventory
+### Lấy Tất Cả Tồn Kho
 
-Retrieves a list of all inventory items with optional filtering.
+Lấy danh sách tất cả các mục tồn kho với tùy chọn lọc.
 
 - **URL**: `/api/inventory`
 - **Method**: `GET`
-- **Auth Required**: Yes
-- **Permissions**: admin, staff
-- **Query Parameters**:
-  - `centerId`: Filter by service center ID
-  - `partId`: Filter by part ID
-  - `status`: Filter by status (available, out_of_stock, discontinued)
-  - `lowStock`: Set to "true" to get only low stock items
+- **Yêu Cầu Xác Thực**: Có
+- **Quyền**: admin, staff
+- **Tham Số Truy Vấn**:
+  - `centerId`: Lọc theo ID trung tâm dịch vụ
+  - `partId`: Lọc theo ID phụ tùng
+  - `status`: Lọc theo trạng thái (available, out_of_stock, discontinued)
+  - `lowStock`: Đặt thành "true" để chỉ lấy các mục hàng tồn kho thấp
 
-**Response Example**:
+**Ví Dụ Phản Hồi**:
 
 ```json
 {
   "success": true,
-  "message": "Inventory items retrieved successfully",
+  "message": "Lấy danh sách tồn kho thành công",
   "data": [
     {
       "_id": "60d21b4667d0d8992e610c90",
       "centerId": {
         "_id": "60d21b4667d0d8992e610c70",
-        "name": "EV Care Center Downtown",
+        "name": "Trung Tâm Chăm Sóc EV Trung Tâm Thành Phố",
         "location": "123 Main St"
       },
       "partId": {
         "_id": "60d21b4667d0d8992e610c85",
         "partNumber": "BT-12345",
-        "partName": "EV Battery Module",
+        "partName": "Mô-đun Pin EV",
         "category": "battery",
         "isCritical": true
       },
@@ -245,7 +245,7 @@ Retrieves a list of all inventory items with optional filtering.
       "reorderPoint": 10,
       "lastRestockDate": "2023-06-15T10:00:00.000Z",
       "costPerUnit": 1000,
-      "location": "Shelf A-12",
+      "location": "Kệ A-12",
       "status": "available",
       "updatedAt": "2023-06-18T10:00:00.000Z"
     }
@@ -253,49 +253,49 @@ Retrieves a list of all inventory items with optional filtering.
 }
 ```
 
-### Get Inventory Item by ID
+### Lấy Mục Tồn Kho Theo ID
 
-Retrieves a specific inventory item by its ID.
+Lấy một mục tồn kho cụ thể theo ID của nó.
 
 - **URL**: `/api/inventory/:id`
 - **Method**: `GET`
-- **Auth Required**: Yes
-- **Permissions**: admin, staff
-- **URL Parameters**:
-  - `id`: Inventory item ID
+- **Yêu Cầu Xác Thực**: Có
+- **Quyền**: admin, staff
+- **Tham Số URL**:
+  - `id`: ID mục tồn kho
 
-**Response Example**: Same as single inventory item from the list endpoint.
+**Ví Dụ Phản Hồi**: Giống như mục tồn kho đơn lẻ từ endpoint danh sách.
 
-### Get Low Stock Alerts
+### Lấy Cảnh Báo Tồn Kho Thấp
 
-Retrieves inventory items with stock levels below their reorder points.
+Lấy các mục tồn kho có mức tồn kho dưới điểm đặt hàng lại.
 
 - **URL**: `/api/inventory/alerts/low-stock`
 - **Method**: `GET`
-- **Auth Required**: Yes
-- **Permissions**: admin, staff
-- **Query Parameters**:
-  - `centerId`: Optional filter by service center ID
+- **Yêu Cầu Xác Thực**: Có
+- **Quyền**: admin, staff
+- **Tham Số Truy Vấn**:
+  - `centerId`: Lọc tùy chọn theo ID trung tâm dịch vụ
 
-**Response Example**: Same format as Get All Inventory.
+**Ví Dụ Phản Hồi**: Cùng định dạng với Lấy Tất Cả Tồn Kho.
 
-### Get Inventory Statistics
+### Lấy Thống Kê Tồn Kho
 
-Retrieves inventory statistics for a service center.
+Lấy thống kê tồn kho cho một trung tâm dịch vụ.
 
 - **URL**: `/api/service-centers/:centerId/inventory-stats`
 - **Method**: `GET`
-- **Auth Required**: Yes
-- **Permissions**: admin, staff
-- **URL Parameters**:
-  - `centerId`: Service center ID
+- **Yêu Cầu Xác Thực**: Có
+- **Quyền**: admin, staff
+- **Tham Số URL**:
+  - `centerId`: ID trung tâm dịch vụ
 
-**Response Example**:
+**Ví Dụ Phản Hồi**:
 
 ```json
 {
   "success": true,
-  "message": "Inventory statistics retrieved successfully",
+  "message": "Lấy thống kê tồn kho thành công",
   "data": {
     "totalItems": 150,
     "totalStock": 2500,
@@ -306,15 +306,15 @@ Retrieves inventory statistics for a service center.
 }
 ```
 
-### Create Inventory Item
+### Tạo Mục Tồn Kho
 
-Creates a new inventory item for a part at a service center.
+Tạo một mục tồn kho mới cho một phụ tùng tại trung tâm dịch vụ.
 
 - **URL**: `/api/inventory`
 - **Method**: `POST`
-- **Auth Required**: Yes
-- **Permissions**: admin, staff
-- **Request Body**:
+- **Yêu Cầu Xác Thực**: Có
+- **Quyền**: admin, staff
+- **Nội Dung Yêu Cầu**:
 
 ```json
 {
@@ -325,16 +325,16 @@ Creates a new inventory item for a part at a service center.
   "maxStockLevel": 50,
   "reorderPoint": 10,
   "costPerUnit": 1000,
-  "location": "Shelf A-12"
+  "location": "Kệ A-12"
 }
 ```
 
-**Response Example**:
+**Ví Dụ Phản Hồi**:
 
 ```json
 {
   "success": true,
-  "message": "Inventory item created successfully",
+  "message": "Tạo mục tồn kho thành công",
   "data": {
     "_id": "60d21b4667d0d8992e610c90",
     "centerId": "60d21b4667d0d8992e610c70",
@@ -344,36 +344,36 @@ Creates a new inventory item for a part at a service center.
     "maxStockLevel": 50,
     "reorderPoint": 10,
     "costPerUnit": 1000,
-    "location": "Shelf A-12",
+    "location": "Kệ A-12",
     "status": "available",
     "updatedAt": "2023-06-18T10:00:00.000Z"
   }
 }
 ```
 
-### Update Inventory Item
+### Cập Nhật Mục Tồn Kho
 
-Updates an existing inventory item.
+Cập nhật một mục tồn kho hiện có.
 
 - **URL**: `/api/inventory/:id`
 - **Method**: `PUT`
-- **Auth Required**: Yes
-- **Permissions**: admin, staff
-- **URL Parameters**:
-  - `id`: Inventory item ID
-- **Request Body**: Same as Create Inventory Item (only include fields to update)
+- **Yêu Cầu Xác Thực**: Có
+- **Quyền**: admin, staff
+- **Tham Số URL**:
+  - `id`: ID mục tồn kho
+- **Nội Dung Yêu Cầu**: Giống như Tạo Mục Tồn Kho (chỉ bao gồm các trường cần cập nhật)
 
-**Response Example**: Same format as Create Inventory Item.
+**Ví Dụ Phản Hồi**: Cùng định dạng với Tạo Mục Tồn Kho.
 
-### Create Inventory Transaction
+### Tạo Giao Dịch Tồn Kho
 
-Records a transaction for an inventory item (stock in, out, or adjustment).
+Ghi lại một giao dịch cho một mục tồn kho (nhập kho, xuất kho hoặc điều chỉnh).
 
 - **URL**: `/api/inventory/transactions`
 - **Method**: `POST`
-- **Auth Required**: Yes
-- **Permissions**: admin, staff
-- **Request Body**:
+- **Yêu Cầu Xác Thực**: Có
+- **Quyền**: admin, staff
+- **Nội Dung Yêu Cầu**:
 
 ```json
 {
@@ -383,16 +383,16 @@ Records a transaction for an inventory item (stock in, out, or adjustment).
   "unitCost": 1000,
   "referenceType": "purchase",
   "referenceId": "60d21b4667d0d8992e610c95",
-  "notes": "Restocking from supplier"
+  "notes": "Nhập hàng từ nhà cung cấp"
 }
 ```
 
-**Response Example**:
+**Ví Dụ Phản Hồi**:
 
 ```json
 {
   "success": true,
-  "message": "Transaction created and inventory updated successfully",
+  "message": "Tạo giao dịch và cập nhật tồn kho thành công",
   "data": {
     "_id": "60d21b4667d0d8992e610c99",
     "inventoryId": "60d21b4667d0d8992e610c90",
@@ -401,35 +401,35 @@ Records a transaction for an inventory item (stock in, out, or adjustment).
     "unitCost": 1000,
     "referenceType": "purchase",
     "referenceId": "60d21b4667d0d8992e610c95",
-    "notes": "Restocking from supplier",
+    "notes": "Nhập hàng từ nhà cung cấp",
     "performedBy": "60d21b4667d0d8992e610c60",
     "transactionDate": "2023-06-18T10:00:00.000Z"
   }
 }
 ```
 
-### Get Inventory Transactions
+### Lấy Giao Dịch Tồn Kho
 
-Retrieves a list of inventory transactions with optional filtering.
+Lấy danh sách các giao dịch tồn kho với tùy chọn lọc.
 
 - **URL**: `/api/inventory/transactions`
 - **Method**: `GET`
-- **Auth Required**: Yes
-- **Permissions**: admin, staff
-- **Query Parameters**:
-  - `inventoryId`: Filter by inventory item ID
-  - `transactionType`: Filter by transaction type (in, out, adjustment, transfer)
-  - `referenceType`: Filter by reference type (service, purchase, adjustment, transfer)
-  - `performedBy`: Filter by user ID who performed the transaction
-  - `startDate`: Filter by transaction date (start)
-  - `endDate`: Filter by transaction date (end)
+- **Yêu Cầu Xác Thực**: Có
+- **Quyền**: admin, staff
+- **Tham Số Truy Vấn**:
+  - `inventoryId`: Lọc theo ID mục tồn kho
+  - `transactionType`: Lọc theo loại giao dịch (in, out, adjustment, transfer)
+  - `referenceType`: Lọc theo loại tham chiếu (service, purchase, adjustment, transfer)
+  - `performedBy`: Lọc theo ID người dùng thực hiện giao dịch
+  - `startDate`: Lọc theo ngày giao dịch (bắt đầu)
+  - `endDate`: Lọc theo ngày giao dịch (kết thúc)
 
-**Response Example**:
+**Ví Dụ Phản Hồi**:
 
 ```json
 {
   "success": true,
-  "message": "Transactions retrieved successfully",
+  "message": "Lấy giao dịch thành công",
   "data": [
     {
       "_id": "60d21b4667d0d8992e610c99",
@@ -437,13 +437,13 @@ Retrieves a list of inventory transactions with optional filtering.
         "_id": "60d21b4667d0d8992e610c90",
         "centerId": {
           "_id": "60d21b4667d0d8992e610c70",
-          "name": "EV Care Center Downtown",
+          "name": "Trung Tâm Chăm Sóc EV Trung Tâm Thành Phố",
           "location": "123 Main St"
         },
         "partId": {
           "_id": "60d21b4667d0d8992e610c85",
           "partNumber": "BT-12345",
-          "partName": "EV Battery Module"
+          "partName": "Mô-đun Pin EV"
         }
       },
       "transactionType": "in",
@@ -451,7 +451,7 @@ Retrieves a list of inventory transactions with optional filtering.
       "unitCost": 1000,
       "referenceType": "purchase",
       "referenceId": "60d21b4667d0d8992e610c95",
-      "notes": "Restocking from supplier",
+      "notes": "Nhập hàng từ nhà cung cấp",
       "performedBy": {
         "_id": "60d21b4667d0d8992e610c60",
         "username": "staff1",
@@ -463,42 +463,42 @@ Retrieves a list of inventory transactions with optional filtering.
 }
 ```
 
-## AI Prediction and Optimization
+## Dự Đoán và Tối Ưu Hóa AI
 
-### Get All Predictions
+### Lấy Tất Cả Dự Đoán
 
-Retrieves a list of AI predictions with optional filtering.
+Lấy danh sách các dự đoán AI với tùy chọn lọc.
 
 - **URL**: `/api/ai/predictions`
 - **Method**: `GET`
-- **Auth Required**: Yes
-- **Permissions**: admin, staff
-- **Query Parameters**:
-  - `centerId`: Filter by service center ID
-  - `partId`: Filter by part ID
-  - `predictionType`: Filter by prediction type (demand_forecast, failure_prediction, stock_optimization)
-  - `predictionPeriod`: Filter by prediction period (1_month, 3_months, 6_months)
-  - `startDate`: Filter by prediction date (start)
-  - `endDate`: Filter by prediction date (end)
+- **Yêu Cầu Xác Thực**: Có
+- **Quyền**: admin, staff
+- **Tham Số Truy Vấn**:
+  - `centerId`: Lọc theo ID trung tâm dịch vụ
+  - `partId`: Lọc theo ID phụ tùng
+  - `predictionType`: Lọc theo loại dự đoán (demand_forecast, failure_prediction, stock_optimization)
+  - `predictionPeriod`: Lọc theo thời kỳ dự đoán (1_month, 3_months, 6_months)
+  - `startDate`: Lọc theo ngày dự đoán (bắt đầu)
+  - `endDate`: Lọc theo ngày dự đoán (kết thúc)
 
-**Response Example**:
+**Ví Dụ Phản Hồi**:
 
 ```json
 {
   "success": true,
-  "message": "Predictions retrieved successfully",
+  "message": "Lấy dự đoán thành công",
   "data": [
     {
       "_id": "60d21b4667d0d8992e610ca0",
       "centerId": {
         "_id": "60d21b4667d0d8992e610c70",
-        "name": "EV Care Center Downtown",
+        "name": "Trung Tâm Chăm Sóc EV Trung Tâm Thành Phố",
         "location": "123 Main St"
       },
       "partId": {
         "_id": "60d21b4667d0d8992e610c85",
         "partNumber": "BT-12345",
-        "partName": "EV Battery Module",
+        "partName": "Mô-đun Pin EV",
         "category": "battery"
       },
       "predictionType": "demand_forecast",
@@ -517,28 +517,28 @@ Retrieves a list of AI predictions with optional filtering.
 }
 ```
 
-### Get Prediction by ID
+### Lấy Dự Đoán Theo ID
 
-Retrieves a specific prediction by its ID.
+Lấy một dự đoán cụ thể theo ID của nó.
 
 - **URL**: `/api/ai/predictions/:id`
 - **Method**: `GET`
-- **Auth Required**: Yes
-- **Permissions**: admin, staff
-- **URL Parameters**:
-  - `id`: Prediction ID
+- **Yêu Cầu Xác Thực**: Có
+- **Quyền**: admin, staff
+- **Tham Số URL**:
+  - `id`: ID dự đoán
 
-**Response Example**: Same as single prediction from the list endpoint.
+**Ví Dụ Phản Hồi**: Giống như dự đoán đơn lẻ từ endpoint danh sách.
 
-### Generate Demand Forecast
+### Tạo Dự Báo Nhu Cầu
 
-Generates demand forecast predictions for parts at a service center.
+Tạo dự đoán dự báo nhu cầu cho các phụ tùng tại trung tâm dịch vụ.
 
 - **URL**: `/api/ai/demand-forecast`
 - **Method**: `POST`
-- **Auth Required**: Yes
-- **Permissions**: admin, staff
-- **Request Body**:
+- **Yêu Cầu Xác Thực**: Có
+- **Quyền**: admin, staff
+- **Nội Dung Yêu Cầu**:
 
 ```json
 {
@@ -547,12 +547,12 @@ Generates demand forecast predictions for parts at a service center.
 }
 ```
 
-**Response Example**:
+**Ví Dụ Phản Hồi**:
 
 ```json
 {
   "success": true,
-  "message": "Demand forecast predictions generated successfully",
+  "message": "Tạo dự đoán dự báo nhu cầu thành công",
   "data": [
     {
       "_id": "60d21b4667d0d8992e610ca0",
@@ -574,15 +574,15 @@ Generates demand forecast predictions for parts at a service center.
 }
 ```
 
-### Generate Stock Optimization
+### Tạo Tối Ưu Hóa Tồn Kho
 
-Generates stock optimization recommendations based on demand forecasts.
+Tạo khuyến nghị tối ưu hóa tồn kho dựa trên dự báo nhu cầu.
 
 - **URL**: `/api/ai/stock-optimization`
 - **Method**: `POST`
-- **Auth Required**: Yes
-- **Permissions**: admin, staff
-- **Request Body**:
+- **Yêu Cầu Xác Thực**: Có
+- **Quyền**: admin, staff
+- **Nội Dung Yêu Cầu**:
 
 ```json
 {
@@ -590,12 +590,12 @@ Generates stock optimization recommendations based on demand forecasts.
 }
 ```
 
-**Response Example**:
+**Ví Dụ Phản Hồi**:
 
 ```json
 {
   "success": true,
-  "message": "Stock optimization predictions generated successfully",
+  "message": "Tạo dự đoán tối ưu hóa tồn kho thành công",
   "data": [
     {
       "_id": "60d21b4667d0d8992e610ca5",
@@ -623,15 +623,15 @@ Generates stock optimization recommendations based on demand forecasts.
 }
 ```
 
-### Apply AI Recommendations
+### Áp Dụng Khuyến Nghị AI
 
-Applies AI-generated stock level recommendations to inventory settings.
+Áp dụng khuyến nghị mức tồn kho được tạo bởi AI vào cài đặt tồn kho.
 
 - **URL**: `/api/ai/apply-recommendations`
 - **Method**: `POST`
-- **Auth Required**: Yes
-- **Permissions**: admin, staff
-- **Request Body**:
+- **Yêu Cầu Xác Thực**: Có
+- **Quyền**: admin, staff
+- **Nội Dung Yêu Cầu**:
 
 ```json
 {
@@ -640,12 +640,12 @@ Applies AI-generated stock level recommendations to inventory settings.
 }
 ```
 
-**Response Example**:
+**Ví Dụ Phản Hồi**:
 
 ```json
 {
   "success": true,
-  "message": "AI recommendations applied successfully",
+  "message": "Áp dụng khuyến nghị AI thành công",
   "data": [
     {
       "_id": "60d21b4667d0d8992e610c90",
@@ -656,7 +656,7 @@ Applies AI-generated stock level recommendations to inventory settings.
       "maxStockLevel": 50,
       "reorderPoint": 18,
       "costPerUnit": 1000,
-      "location": "Shelf A-12",
+      "location": "Kệ A-12",
       "status": "available",
       "updatedAt": "2023-06-18T10:00:00.000Z"
     }
@@ -664,60 +664,60 @@ Applies AI-generated stock level recommendations to inventory settings.
 }
 ```
 
-## Workflow Examples
+## Ví Dụ Quy Trình
 
-### 1. Basic Parts Management Workflow
+### 1. Quy Trình Quản Lý Phụ Tùng Cơ Bản
 
-1. **View all parts**
+1. **Xem tất cả phụ tùng**
 
    ```
    GET /api/parts
    ```
 
-2. **Add a new part**
+2. **Thêm phụ tùng mới**
 
    ```
    POST /api/parts
    ```
 
-3. **View parts by category**
+3. **Xem phụ tùng theo danh mục**
 
    ```
    GET /api/parts/category/battery
    ```
 
-4. **Update part information**
+4. **Cập nhật thông tin phụ tùng**
    ```
    PUT /api/parts/:id
    ```
 
-### 2. Inventory Management Workflow
+### 2. Quy Trình Quản Lý Tồn Kho
 
-1. **View inventory at a service center**
+1. **Xem tồn kho tại trung tâm dịch vụ**
 
    ```
    GET /api/inventory?centerId=60d21b4667d0d8992e610c70
    ```
 
-2. **Check for low stock items**
+2. **Kiểm tra các mục tồn kho thấp**
 
    ```
    GET /api/inventory/alerts/low-stock?centerId=60d21b4667d0d8992e610c70
    ```
 
-3. **Add inventory for a new part**
+3. **Thêm tồn kho cho phụ tùng mới**
 
    ```
    POST /api/inventory
    ```
 
-4. **Record a stock receipt transaction**
+4. **Ghi lại giao dịch nhập hàng**
 
    ```
    POST /api/inventory/transactions
    ```
 
-   With body:
+   Với nội dung:
 
    ```json
    {
@@ -726,15 +726,15 @@ Applies AI-generated stock level recommendations to inventory settings.
      "quantity": 10,
      "unitCost": 1000,
      "referenceType": "purchase",
-     "notes": "Monthly restock"
+     "notes": "Nhập hàng hàng tháng"
    }
    ```
 
-5. **Record a stock usage transaction**
+5. **Ghi lại giao dịch sử dụng tồn kho**
    ```
    POST /api/inventory/transactions
    ```
-   With body:
+   Với nội dung:
    ```json
    {
      "inventoryId": "60d21b4667d0d8992e610c90",
@@ -742,19 +742,19 @@ Applies AI-generated stock level recommendations to inventory settings.
      "quantity": 2,
      "referenceType": "service",
      "referenceId": "60d21b4667d0d8992e610d10",
-     "notes": "Used for vehicle repair"
+     "notes": "Sử dụng để sửa chữa xe"
    }
    ```
 
-### 3. AI-Driven Inventory Optimization Workflow
+### 3. Quy Trình Tối Ưu Hóa Tồn Kho Dựa Trên AI
 
-1. **Generate demand forecasts**
+1. **Tạo dự báo nhu cầu**
 
    ```
    POST /api/ai/demand-forecast
    ```
 
-   With body:
+   Với nội dung:
 
    ```json
    {
@@ -763,13 +763,13 @@ Applies AI-generated stock level recommendations to inventory settings.
    }
    ```
 
-2. **Generate stock optimization recommendations**
+2. **Tạo khuyến nghị tối ưu hóa tồn kho**
 
    ```
    POST /api/ai/stock-optimization
    ```
 
-   With body:
+   Với nội dung:
 
    ```json
    {
@@ -777,19 +777,19 @@ Applies AI-generated stock level recommendations to inventory settings.
    }
    ```
 
-3. **View generated predictions**
+3. **Xem dự đoán được tạo**
 
    ```
    GET /api/ai/predictions?centerId=60d21b4667d0d8992e610c70&predictionType=stock_optimization
    ```
 
-4. **Apply recommendations to inventory settings**
+4. **Áp dụng khuyến nghị vào cài đặt tồn kho**
 
    ```
    POST /api/ai/apply-recommendations
    ```
 
-   With body:
+   Với nội dung:
 
    ```json
    {
@@ -797,32 +797,32 @@ Applies AI-generated stock level recommendations to inventory settings.
    }
    ```
 
-5. **Verify updated inventory settings**
+5. **Xác minh cài đặt tồn kho đã cập nhật**
    ```
    GET /api/inventory?centerId=60d21b4667d0d8992e610c70
    ```
 
-### 4. Technician Parts Usage Workflow
+### 4. Quy Trình Sử Dụng Phụ Tùng Của Kỹ Thuật Viên
 
-1. **Technician searches for compatible parts**
+1. **Kỹ thuật viên tìm kiếm phụ tùng tương thích**
 
    ```
    GET /api/vehicle-models/:vehicleModelId/compatible-parts
    ```
 
-2. **Check inventory for the required part**
+2. **Kiểm tra tồn kho cho phụ tùng cần thiết**
 
    ```
    GET /api/inventory?partId=60d21b4667d0d8992e610c85&centerId=60d21b4667d0d8992e610c70
    ```
 
-3. **Staff records part usage transaction**
+3. **Nhân viên ghi lại giao dịch sử dụng phụ tùng**
 
    ```
    POST /api/inventory/transactions
    ```
 
-   With body:
+   Với nội dung:
 
    ```json
    {
@@ -831,11 +831,11 @@ Applies AI-generated stock level recommendations to inventory settings.
      "quantity": 1,
      "referenceType": "service",
      "referenceId": "60d21b4667d0d8992e610d10",
-     "notes": "Used for battery replacement"
+     "notes": "Sử dụng để thay thế pin"
    }
    ```
 
-4. **Check if stock is now below reorder point**
+4. **Kiểm tra xem tồn kho có dưới điểm đặt hàng lại không**
    ```
    GET /api/inventory/alerts/low-stock?centerId=60d21b4667d0d8992e610c70
    ```
