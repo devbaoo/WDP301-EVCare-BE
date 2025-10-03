@@ -23,6 +23,7 @@ import vehicleController from "../controllers/vehicleController.js";
 import partController from "../controllers/partController.js";
 import inventoryController from "../controllers/inventoryController.js";
 import aiPredictionController from "../controllers/aiPredictionController.js";
+import chatController from "../controllers/chatController.js";
 import { protect, authorize } from "../middleware/authMiddleware.js";
 
 // Configure multer for file uploads
@@ -1265,6 +1266,29 @@ let initWebRoutes = (app) => {
     authorize("admin", "manager"),
     aiPredictionController.applyRecommendations
   );
+
+  // ===== CHAT =====
+  router.get(
+    "/api/chat/conversations",
+    protect,
+    chatController.getConversations
+  );
+  router.get(
+    "/api/chat/conversations/:conversationId/messages",
+    protect,
+    chatController.getMessages
+  );
+  router.post(
+    "/api/chat/conversations",
+    protect,
+    chatController.startConversation
+  );
+  router.put(
+    "/api/chat/conversations/:conversationId/read",
+    protect,
+    chatController.markAsRead
+  );
+  router.get("/api/chat/unread-count", protect, chatController.getUnreadCount);
 
   // ===== HEALTH CHECK =====
   router.get("/api/health", (req, res) => {
