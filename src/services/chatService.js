@@ -12,8 +12,8 @@ const chatService = {
     // Get unique conversation IDs where the user is involved
     const conversationIds = await ChatMessage.distinct("conversationId", {
       $or: [
-        { senderId: mongoose.Types.ObjectId(userId) },
-        { recipientId: mongoose.Types.ObjectId(userId) },
+        { senderId: new mongoose.Types.ObjectId(userId) },
+        { recipientId: new mongoose.Types.ObjectId(userId) },
       ],
     });
 
@@ -40,7 +40,7 @@ const chatService = {
       // Get unread message count for this conversation
       const unreadCount = await ChatMessage.countDocuments({
         conversationId: convId,
-        recipientId: mongoose.Types.ObjectId(userId),
+        recipientId: new mongoose.Types.ObjectId(userId),
         isRead: false,
       });
 
@@ -82,8 +82,8 @@ const chatService = {
     const isUserInConversation = await ChatMessage.exists({
       conversationId,
       $or: [
-        { senderId: mongoose.Types.ObjectId(userId) },
-        { recipientId: mongoose.Types.ObjectId(userId) },
+        { senderId: new mongoose.Types.ObjectId(userId) },
+        { recipientId: new mongoose.Types.ObjectId(userId) },
       ],
     });
 
@@ -223,7 +223,7 @@ const chatService = {
     const result = await ChatMessage.updateMany(
       {
         conversationId,
-        recipientId: mongoose.Types.ObjectId(userId),
+        recipientId: new mongoose.Types.ObjectId(userId),
         isRead: false,
       },
       { isRead: true }
@@ -239,7 +239,7 @@ const chatService = {
    */
   getUnreadMessageCount: async (userId) => {
     const count = await ChatMessage.countDocuments({
-      recipientId: mongoose.Types.ObjectId(userId),
+      recipientId: new mongoose.Types.ObjectId(userId),
       isRead: false,
     });
 
