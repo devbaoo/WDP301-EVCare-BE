@@ -7,6 +7,11 @@ const ChatMessageSchema = new mongoose.Schema(
       required: true,
       maxlength: 50,
     },
+    bookingId: {
+      type: mongoose.Schema.Types.ObjectId,
+      ref: "Appointment",
+      required: false, // Optional - links conversation to a specific booking
+    },
     senderId: {
       type: mongoose.Schema.Types.ObjectId,
       ref: "User",

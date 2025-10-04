@@ -6,17 +6,49 @@ const chatService = {
   /**
    * Get all conversations for a user
    * @param {string} userId - User ID to get conversations for
+   * @param {string} userRole - Role of the requesting user
    * @returns {Promise<Array>} - List of conversations with latest message and recipient info
    */
-  getConversationsForUser: async (userId) => {
-    // Get unique conversation IDs where the user is involved
-    const conversationIds = await ChatMessage.distinct("conversationId", {
+  getConversationsForUser: async (userId, userRole = null) => {
+    let conversationIds = [];
+
+    // Get unique conversation IDs where the user is directly involved
+    const directConversationIds = await ChatMessage.distinct("conversationId", {
       $or: [
         { senderId: new mongoose.Types.ObjectId(userId) },
         { recipientId: new mongoose.Types.ObjectId(userId) },
-
       ],
     });
+
+    conversationIds = [...directConversationIds];
+
+    // If user is a technician, also get conversations related to their bookings
+    if (userRole === "technician") {
+      // Get all bookings assigned to this technician
+      const Appointment = mongoose.model("Appointment");
+      const technicianBookings = await Appointment.find({
+        technician: new mongoose.Types.ObjectId(userId),
+      });
+
+      if (technicianBookings.length > 0) {
+        const bookingIds = technicianBookings.map((booking) => booking._id);
+
+        // Find conversations that have these booking IDs
+        const bookingRelatedConversations = await ChatMessage.distinct(
+          "conversationId",
+          {
+            bookingId: { $in: bookingIds },
+          }
+        );
+
+        // Add these conversation IDs to the list (avoid duplicates)
+        bookingRelatedConversations.forEach((convId) => {
+          if (!conversationIds.includes(convId)) {
+            conversationIds.push(convId);
+          }
+        });
+      }
+    }
 
     const conversations = [];
 
@@ -72,23 +104,45 @@ const chatService = {
    * @param {string} userId - ID of the requesting user (for access control)
    * @param {number} page - Page number for pagination
    * @param {number} limit - Number of messages per page
+   * @param {string} userRole - Role of the requesting user
    * @returns {Promise<Object>} - Paginated list of messages
    */
   getMessagesForConversation: async (
     conversationId,
     userId,
     page = 1,
-    limit = 20
+    limit = 20,
+    userRole = null
   ) => {
-    // Check if user is part of this conversation
-    const isUserInConversation = await ChatMessage.exists({
+    // First check if user is directly part of this conversation
+    let isUserInConversation = await ChatMessage.exists({
       conversationId,
       $or: [
         { senderId: new mongoose.Types.ObjectId(userId) },
         { recipientId: new mongoose.Types.ObjectId(userId) },
-
       ],
     });
+
+    // If user is not directly in conversation but is a technician, check if they are assigned to the related booking
+    if (!isUserInConversation && userRole === "technician") {
+      const message = await ChatMessage.findOne({
+        conversationId,
+        bookingId: { $exists: true, $ne: null },
+      });
+
+      if (message && message.bookingId) {
+        // Import dynamically to avoid circular dependency
+        const Appointment = mongoose.model("Appointment");
+        const booking = await Appointment.findOne({
+          _id: message.bookingId,
+          technician: new mongoose.Types.ObjectId(userId),
+        });
+
+        if (booking) {
+          isUserInConversation = true;
+        }
+      }
+    }
 
     if (!isUserInConversation) {
       throw new Error("User not authorized to access this conversation");
@@ -124,9 +178,15 @@ const chatService = {
    * @param {string} senderId - User starting the conversation
    * @param {string} recipientId - User to chat with
    * @param {string} initialMessage - First message content (optional)
+   * @param {string} bookingId - Optional booking ID to link this conversation
    * @returns {Promise<Object>} - Conversation details with first message
    */
-  createOrGetConversation: async (senderId, recipientId, initialMessage) => {
+  createOrGetConversation: async (
+    senderId,
+    recipientId,
+    initialMessage,
+    bookingId = null
+  ) => {
     // Check if users exist
     const [sender, recipient] = await Promise.all([
       User.findById(senderId),
@@ -151,6 +211,7 @@ const chatService = {
         conversationId,
         senderId,
         recipientId,
+        bookingId, // Add booking ID if provided
         content: initialMessage,
         messageType: "text",
         isRead: false,
@@ -187,6 +248,7 @@ const chatService = {
    * @param {string} content - Message content
    * @param {string} messageType - Type of message (text, image, etc.)
    * @param {string} attachmentUrl - URL of attachment (if applicable)
+   * @param {string} bookingId - Optional booking ID to link this message to
    * @returns {Promise<Object>} - Created message
    */
   createMessage: async (
@@ -195,12 +257,27 @@ const chatService = {
     recipientId,
     content,
     messageType = "text",
-    attachmentUrl = null
+    attachmentUrl = null,
+    bookingId = null
   ) => {
+    // If this is the first message for a conversation with bookingId,
+    // check if any previous message has bookingId and use that
+    let existingBookingId = bookingId;
+    if (!existingBookingId) {
+      const existingMessage = await ChatMessage.findOne({
+        conversationId,
+        bookingId: { $exists: true, $ne: null },
+      });
+      if (existingMessage && existingMessage.bookingId) {
+        existingBookingId = existingMessage.bookingId;
+      }
+    }
+
     const message = new ChatMessage({
       conversationId,
       senderId,
       recipientId,
+      bookingId: existingBookingId,
       content,
       messageType,
       attachmentUrl,
@@ -226,7 +303,7 @@ const chatService = {
     const result = await ChatMessage.updateMany(
       {
         conversationId,
- 
+
         recipientId: new mongoose.Types.ObjectId(userId),
 
         isRead: false,

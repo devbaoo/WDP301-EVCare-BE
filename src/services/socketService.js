@@ -2,8 +2,59 @@ import jwt from "jsonwebtoken";
 import dotenv from "dotenv";
 import chatService from "./chatService.js";
 import User from "../models/user.js";
+import ChatMessage from "../models/chatMessage.js";
+import mongoose from "mongoose";
 
 dotenv.config();
+
+/**
+ * Check if a user can access a conversation
+ * @param {string} conversationId - Conversation ID to check
+ * @param {string} userId - User ID
+ * @param {string} userRole - User role (customer, staff, technician, admin)
+ * @returns {Promise<boolean>} - Whether the user can access the conversation
+ */
+const canUserAccessConversation = async (conversationId, userId, userRole) => {
+  try {
+    // Direct participation check
+    const isDirectParticipant = await ChatMessage.exists({
+      conversationId,
+      $or: [
+        { senderId: new mongoose.Types.ObjectId(userId) },
+        { recipientId: new mongoose.Types.ObjectId(userId) },
+      ],
+    });
+
+    if (isDirectParticipant) return true;
+
+    // If user is not a direct participant but is a technician, check if they're assigned to the booking
+    if (userRole === "technician") {
+      const message = await ChatMessage.findOne({
+        conversationId,
+        bookingId: { $exists: true, $ne: null },
+      });
+
+      if (message && message.bookingId) {
+        // Import dynamically to avoid circular dependency
+        const Appointment = mongoose.model("Appointment");
+        const booking = await Appointment.findOne({
+          _id: message.bookingId,
+          technician: new mongoose.Types.ObjectId(userId),
+        });
+
+        if (booking) return true;
+      }
+    }
+
+    // Admin can access all conversations
+    if (userRole === "admin") return true;
+
+    return false;
+  } catch (error) {
+    console.error("Error checking conversation access:", error);
+    return false;
+  }
+};
 
 // Map to store online users: { userId: socketId }
 const onlineUsers = new Map();
@@ -73,9 +124,32 @@ const initSocketServer = (io) => {
     });
 
     // Handle joining a conversation
-    socket.on("join_conversation", (conversationId) => {
-      socket.join(conversationId);
-      console.log(`User ${userId} joined conversation: ${conversationId}`);
+    socket.on("join_conversation", async (conversationId) => {
+      try {
+        // Check if user has access to this conversation
+        const canJoin = await canUserAccessConversation(
+          conversationId,
+          userId,
+          socket.user.role
+        );
+
+        if (canJoin) {
+          socket.join(conversationId);
+          console.log(
+            `User ${userId} (${socket.user.role}) joined conversation: ${conversationId}`
+          );
+        } else {
+          socket.emit("error", {
+            message: "Not authorized to join this conversation",
+          });
+          console.log(
+            `Access denied: User ${userId} (${socket.user.role}) tried to join conversation: ${conversationId}`
+          );
+        }
+      } catch (error) {
+        console.error("Error joining conversation:", error);
+        socket.emit("error", { message: "Failed to join conversation" });
+      }
     });
 
     // Handle leaving a conversation
@@ -93,6 +167,7 @@ const initSocketServer = (io) => {
           content,
           messageType,
           attachmentUrl,
+          bookingId, // Add support for bookingId
         } = data;
 
         // Create message in database
@@ -102,7 +177,8 @@ const initSocketServer = (io) => {
           recipientId,
           content,
           messageType,
-          attachmentUrl
+          attachmentUrl,
+          bookingId
         );
 
         // Broadcast message to conversation room
