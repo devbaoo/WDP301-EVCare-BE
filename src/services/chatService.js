@@ -14,6 +14,7 @@ const chatService = {
       $or: [
         { senderId: new mongoose.Types.ObjectId(userId) },
         { recipientId: new mongoose.Types.ObjectId(userId) },
+
       ],
     });
 
@@ -41,6 +42,7 @@ const chatService = {
       const unreadCount = await ChatMessage.countDocuments({
         conversationId: convId,
         recipientId: new mongoose.Types.ObjectId(userId),
+
         isRead: false,
       });
 
@@ -84,6 +86,7 @@ const chatService = {
       $or: [
         { senderId: new mongoose.Types.ObjectId(userId) },
         { recipientId: new mongoose.Types.ObjectId(userId) },
+
       ],
     });
 
@@ -223,7 +226,9 @@ const chatService = {
     const result = await ChatMessage.updateMany(
       {
         conversationId,
+ 
         recipientId: new mongoose.Types.ObjectId(userId),
+
         isRead: false,
       },
       { isRead: true }

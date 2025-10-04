@@ -326,11 +326,13 @@ socket.on("error", (error) => {
 
 ### Chat Message Schema
 
+
 ### Chat Message Schema
 
 ```javascript
 {
   conversationId: String, // Format: "userId1_userId2" (sorted alphanumerically) - NOT an ObjectId
+
   senderId: ObjectId (ref: 'User'),
   recipientId: ObjectId (ref: 'User'),
   messageType: String, // 'text', 'image', 'document', 'system'
