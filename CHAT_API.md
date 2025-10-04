@@ -326,9 +326,13 @@ socket.on("error", (error) => {
 
 ### Chat Message Schema
 
+
+### Chat Message Schema
+
 ```javascript
 {
-  conversationId: String, // Format: "userId1_userId2" (sorted alphanumerically)
+  conversationId: String, // Format: "userId1_userId2" (sorted alphanumerically) - NOT an ObjectId
+
   senderId: ObjectId (ref: 'User'),
   recipientId: ObjectId (ref: 'User'),
   messageType: String, // 'text', 'image', 'document', 'system'
@@ -338,6 +342,8 @@ socket.on("error", (error) => {
   sentAt: Date
 }
 ```
+
+> **Important Note**: When working with user IDs in MongoDB queries, always use the `new mongoose.Types.ObjectId(userId)` constructor, not `mongoose.Types.ObjectId(userId)` function syntax, especially with newer MongoDB driver versions.
 
 ## Authentication
 
