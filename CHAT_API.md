@@ -132,12 +132,17 @@ POST /api/chat/conversations
 
 **Request Body:**
 
+````json
+**Request Body:**
 ```json
 {
   "recipientId": "645a1c2b3e5e7a8b9c0d1e2f",
-  "initialMessage": "Hello, I need help with my booking"
+  "initialMessage": "Hello, I need help with my booking",
+  "bookingId": "645a1c2b3e5e7a8b9c0d1e50"  // Optional: links conversation to a booking
 }
-```
+````
+
+````
 
 **Response:**
 
@@ -161,7 +166,7 @@ POST /api/chat/conversations
   },
   "message": "Conversation started successfully"
 }
-```
+````
 
 ### Mark Messages as Read
 
@@ -248,6 +253,7 @@ socket.emit("send_message", {
   content: "Hello there!",
   messageType: "text", // 'text', 'image', 'document'
   attachmentUrl: null, // Optional URL for attachments
+  bookingId: "bookingId", // Optional: links message to a booking
 });
 ```
 
@@ -326,13 +332,12 @@ socket.on("error", (error) => {
 
 ### Chat Message Schema
 
-
 ### Chat Message Schema
 
 ```javascript
 {
   conversationId: String, // Format: "userId1_userId2" (sorted alphanumerically) - NOT an ObjectId
-
+  bookingId: ObjectId (ref: 'Appointment'), // Optional - links conversation to a specific booking
   senderId: ObjectId (ref: 'User'),
   recipientId: ObjectId (ref: 'User'),
   messageType: String, // 'text', 'image', 'document', 'system'
@@ -344,6 +349,39 @@ socket.on("error", (error) => {
 ```
 
 > **Important Note**: When working with user IDs in MongoDB queries, always use the `new mongoose.Types.ObjectId(userId)` constructor, not `mongoose.Types.ObjectId(userId)` function syntax, especially with newer MongoDB driver versions.
+
+## Access Control
+
+### User Roles and Access
+
+The chat system supports the following roles with different access levels:
+
+1. **Customers**: Can access conversations where they are direct participants
+2. **Staff**: Can access conversations where they are direct participants
+3. **Technicians**: Can access conversations where they are:
+   - Direct participants
+   - Assigned to the booking linked to the conversation
+4. **Admins**: Can access all conversations
+
+### Technician-Customer Communication
+
+For technicians to communicate with customers:
+
+1. When starting a conversation, include the `bookingId` in the request:
+
+   ```javascript
+   // Frontend code (from staff/technician)
+   startChatConversation({
+     recipientId: customerId,
+     bookingId: appointmentId,
+     initialMessage: "Hello, I'm the technician assigned to your booking.",
+   });
+   ```
+
+2. Once a conversation is linked to a booking, the assigned technician will:
+   - See the conversation in their conversations list
+   - Be able to send and receive messages in that conversation
+   - Receive notifications for new messages
 
 ## Authentication
 

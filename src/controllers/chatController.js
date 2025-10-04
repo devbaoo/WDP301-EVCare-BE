@@ -9,7 +9,11 @@ const chatController = {
   getConversations: async (req, res) => {
     try {
       const userId = req.user.id; // Assuming user info is added by auth middleware
-      const conversations = await chatService.getConversationsForUser(userId);
+      const userRole = req.user.role; // Get user role for access control
+      const conversations = await chatService.getConversationsForUser(
+        userId,
+        userRole
+      );
 
       return res.status(200).json({
         success: true,
@@ -34,6 +38,7 @@ const chatController = {
     try {
       const { conversationId } = req.params;
       const userId = req.user.id; // Needed to check if user has access to conversation
+      const userRole = req.user.role; // Get user role for access control
       const page = parseInt(req.query.page) || 1;
       const limit = parseInt(req.query.limit) || 20;
 
@@ -41,7 +46,8 @@ const chatController = {
         conversationId,
         userId,
         page,
-        limit
+        limit,
+        userRole
       );
 
       return res.status(200).json({
@@ -65,7 +71,7 @@ const chatController = {
    */
   startConversation: async (req, res) => {
     try {
-      const { recipientId, initialMessage } = req.body;
+      const { recipientId, initialMessage, bookingId } = req.body;
       const senderId = req.user.id;
 
       if (!recipientId) {
@@ -78,7 +84,8 @@ const chatController = {
       const result = await chatService.createOrGetConversation(
         senderId,
         recipientId,
-        initialMessage
+        initialMessage,
+        bookingId
       );
 
       return res.status(201).json({
