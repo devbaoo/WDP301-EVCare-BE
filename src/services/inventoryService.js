@@ -332,7 +332,7 @@ const inventoryService = {
   getInventoryStats: async (centerId) => {
     try {
       const stats = await CenterInventory.aggregate([
-        { $match: { centerId: mongoose.Types.ObjectId(centerId) } },
+        { $match: { centerId: new mongoose.Types.ObjectId(centerId) } },
         {
           $group: {
             _id: null,
