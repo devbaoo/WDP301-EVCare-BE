@@ -1268,6 +1268,7 @@ let initWebRoutes = (app) => {
   );
 
   // ===== CHAT =====
+  router.get("/api/chat/bookings", protect, chatController.getBookingsForChat);
   router.get(
     "/api/chat/conversations",
     protect,
