@@ -971,7 +971,7 @@ let initWebRoutes = (app) => {
   router.get(
     "/api/parts",
     protect,
-    authorize("admin", "staff"),
+    authorize("admin", "staff", "technician"),
     partController.getAllParts
   );
   router.get(
