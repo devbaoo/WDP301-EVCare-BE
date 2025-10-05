@@ -3,23 +3,14 @@ import mongoose from "mongoose";
 const ChatMessageSchema = new mongoose.Schema(
   {
     conversationId: {
-      type: String, // Format: "userId1_userId2" (string, not ObjectId)
-      required: true,
-      maxlength: 50,
-    },
-    bookingId: {
       type: mongoose.Schema.Types.ObjectId,
-      ref: "Appointment",
-      required: false, // Optional - links conversation to a specific booking
+      ref: "Conversation",
+      required: true,
     },
     senderId: {
       type: mongoose.Schema.Types.ObjectId,
       ref: "User",
       required: true,
-    },
-    recipientId: {
-      type: mongoose.Schema.Types.ObjectId,
-      ref: "User",
     },
     messageType: {
       type: String,

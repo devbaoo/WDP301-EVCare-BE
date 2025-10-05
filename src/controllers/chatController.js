@@ -2,6 +2,51 @@ import chatService from "../services/chatService.js";
 
 const chatController = {
   /**
+   * Get bookings that the user can chat about
+   * @param {Object} req - Express request object
+   * @param {Object} res - Express response object
+   */
+  getBookingsForChat: async (req, res) => {
+    try {
+      const userId = req.user.id; // Assuming user info is added by auth middleware
+      const userRole = req.user.role; // Get user role for access control
+
+      console.log(
+        `[DEBUG] Getting bookings for chat - User: ${userId}, Role: ${userRole}`
+      );
+
+      const bookings = await chatService.getBookingsForChat(userId, userRole);
+
+      console.log(`[DEBUG] Found ${bookings.length} bookings for chat`);
+      if (bookings.length > 0) {
+        bookings.forEach((booking, index) => {
+          console.log(
+            `[DEBUG] Booking ${index + 1}:`,
+            JSON.stringify({
+              id: booking.bookingId,
+              status: booking.status,
+              hasConversation: booking.hasConversation,
+              participants: booking.otherParticipants.length,
+            })
+          );
+        });
+      }
+
+      return res.status(200).json({
+        success: true,
+        data: bookings,
+        message: "Bookings for chat retrieved successfully",
+      });
+    } catch (error) {
+      console.error("Error retrieving bookings for chat:", error);
+      return res.status(500).json({
+        success: false,
+        message: error.message || "Error retrieving bookings for chat",
+      });
+    }
+  },
+
+  /**
    * Get all conversations for a user
    * @param {Object} req - Express request object with userId in params
    * @param {Object} res - Express response object
@@ -66,26 +111,25 @@ const chatController = {
 
   /**
    * Start a new conversation
-   * @param {Object} req - Express request object with recipientId in body
+   * @param {Object} req - Express request object with bookingId in body
    * @param {Object} res - Express response object
    */
   startConversation: async (req, res) => {
     try {
-      const { recipientId, initialMessage, bookingId } = req.body;
-      const senderId = req.user.id;
+      const { bookingId, initialMessage } = req.body;
+      const userId = req.user.id;
 
-      if (!recipientId) {
+      if (!bookingId) {
         return res.status(400).json({
           success: false,
-          message: "Recipient ID is required",
+          message: "Booking ID is required",
         });
       }
 
       const result = await chatService.createOrGetConversation(
-        senderId,
-        recipientId,
-        initialMessage,
-        bookingId
+        userId,
+        bookingId,
+        initialMessage
       );
 
       return res.status(201).json({
