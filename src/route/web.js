@@ -1289,6 +1289,11 @@ let initWebRoutes = (app) => {
     protect,
     chatController.markAsRead
   );
+  router.post(
+    "/api/chat/conversations/:conversationId/messages",
+    protect,
+    chatController.sendMessage
+  );
   router.get("/api/chat/unread-count", protect, chatController.getUnreadCount);
 
   // ===== HEALTH CHECK =====

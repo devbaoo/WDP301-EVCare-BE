@@ -10,6 +10,23 @@ import notificationService from "./notificationService.js";
 dotenv.config();
 
 /**
+ * Get peer user ID from conversation (other participants except sender)
+ * @param {Object} conversation - Conversation object
+ * @param {string} senderId - Sender user ID
+ * @returns {string|null} - Peer user ID
+ */
+const getPeerIdFromConversation = (conversation, senderId) => {
+  if (!conversation || !conversation.participants) return null;
+
+  // Find first participant that is not the sender
+  const peer = conversation.participants.find(
+    (p) => p.userId.toString() !== senderId.toString()
+  );
+
+  return peer ? peer.userId.toString() : null;
+};
+
+/**
  * Check if a user can access a conversation
  * @param {string} conversationId - Conversation ID to check
  * @param {string} userId - User ID

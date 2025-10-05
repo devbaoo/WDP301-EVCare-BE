@@ -195,6 +195,86 @@ const chatController = {
       });
     }
   },
+
+  /**
+   * Send a new message
+   * @param {Object} req - Express request object
+   * @param {Object} res - Express response object
+   */
+  sendMessage: async (req, res) => {
+    try {
+      const { conversationId } = req.params;
+      const { content, messageType = "text", attachmentUrl } = req.body;
+      const senderId = req.user.id;
+
+      if (!content || !content.trim()) {
+        return res.status(400).json({
+          success: false,
+          message: "Message content is required",
+        });
+      }
+
+      const result = await chatService.createMessage(
+        conversationId,
+        senderId,
+        content,
+        messageType,
+        attachmentUrl
+      );
+
+      // Real-time Socket.IO notification
+      const io = req.app.get("io");
+      if (io) {
+        const conversation = await chatService.getConversationById(
+          conversationId
+        );
+
+        const payloadData = {
+          conversationId,
+          message: result,
+          conversation: conversation,
+        };
+
+        // Emit to conversation room
+        io.to(`conversation:${conversationId}`).emit(
+          "chat:new-message",
+          payloadData
+        );
+
+        // Get peer ID to notify individual user
+        const getPeerIdFromConversation = (conversation, senderId) => {
+          if (!conversation || !conversation.participants) return null;
+
+          const peer = conversation.participants.find(
+            (p) => p.userId.toString() !== senderId.toString()
+          );
+
+          return peer ? peer.userId.toString() : null;
+        };
+
+        const peerIdToNotify = getPeerIdFromConversation(
+          conversation,
+          senderId
+        );
+
+        if (peerIdToNotify) {
+          io.to(`user:${peerIdToNotify}`).emit("chat:new-message", payloadData);
+        }
+      }
+
+      return res.status(201).json({
+        success: true,
+        data: result,
+        message: "Message sent successfully",
+      });
+    } catch (error) {
+      console.error("Error sending message:", error);
+      return res.status(500).json({
+        success: false,
+        message: error.message || "Error sending message",
+      });
+    }
+  },
 };
 
 export default chatController;
