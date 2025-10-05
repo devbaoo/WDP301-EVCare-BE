@@ -124,7 +124,7 @@ const WorkProgressTrackingSchema = new mongoose.Schema(
         min: 0,
       },
       quoteDetails: {
-        type: String,
+        type: mongoose.Schema.Types.Mixed, // Support both String and Object
       },
       quotedAt: {
         type: Date,
