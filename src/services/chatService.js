@@ -712,6 +712,23 @@ const chatService = {
       errors: errorCount,
     };
   },
+
+  /**
+   * Get conversation by ID
+   * @param {string} conversationId - Conversation ID
+   * @returns {Promise<Object>} - Conversation details
+   */
+  getConversationById: async (conversationId) => {
+    const conversation = await Conversation.findById(conversationId)
+      .populate("participants.userId", "name role")
+      .populate("bookingId", "status");
+
+    if (!conversation) {
+      throw new Error("Conversation not found");
+    }
+
+    return conversation;
+  },
 };
 
 export default chatService;

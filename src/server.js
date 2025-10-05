@@ -32,6 +32,7 @@ app.use(express.urlencoded({ extended: true, limit: "50mb" }));
 app.use(express.static("public"));
 
 // Initialize web routes and socket server
+app.set("io", io); // Store io instance for use in controllers
 initWebRoutes(app);
 initSocketServer(io);
 

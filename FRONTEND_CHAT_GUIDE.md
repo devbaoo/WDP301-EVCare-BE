@@ -265,6 +265,49 @@ Authorization: Bearer <token>
 }
 ```
 
+### 7. **POST /api/chat/conversations/:conversationId/messages**
+
+Gửi tin nhắn mới trong conversation
+
+**Headers:**
+
+```
+Authorization: Bearer <token>
+Content-Type: application/json
+```
+
+**Body:**
+
+```json
+{
+  "content": "Hello, this is my message!",
+  "messageType": "text",
+  "attachmentUrl": null
+}
+```
+
+**Response:**
+
+```json
+{
+  "success": true,
+  "data": {
+    "_id": "674015c4f6f123456789ab02",
+    "conversationId": "674015c4f6f123456789abef",
+    "senderId": {
+      "_id": "673def123456789abcdef56",
+      "name": "John Customer",
+      "role": "customer"
+    },
+    "messageType": "text",
+    "content": "Hello, this is my message!",
+    "attachmentUrl": null,
+    "sentAt": "2024-11-22T10:35:00.000Z"
+  },
+  "message": "Message sent successfully"
+}
+```
+
 ## Frontend Implementation
 
 ### 1. Chat Service (chatService.js)
@@ -373,6 +416,33 @@ class ChatService {
 
     if (!response.ok) {
       throw new Error("Failed to fetch unread count");
+    }
+
+    return await response.json();
+  }
+
+  // Gửi tin nhắn mới
+  async sendMessage(
+    conversationId,
+    content,
+    messageType = "text",
+    attachmentUrl = null
+  ) {
+    const response = await fetch(
+      `${this.baseURL}/api/chat/conversations/${conversationId}/messages`,
+      {
+        method: "POST",
+        headers: this.getHeaders(),
+        body: JSON.stringify({
+          content,
+          messageType,
+          attachmentUrl,
+        }),
+      }
+    );
+
+    if (!response.ok) {
+      throw new Error("Failed to send message");
     }
 
     return await response.json();
@@ -1006,10 +1076,11 @@ export default ChatMain;
 
 ## Ghi chú quan trọng
 
-### 1. **API cần bổ sung:**
+### 1. **API đã hoàn thiện:**
 
-- **Send Message API**: Backend hiện chưa có API để gửi tin nhắn mới
-- **WebSocket**: Để real-time messaging
+- ✅ **Send Message API**: `POST /api/chat/conversations/:conversationId/messages`
+- ✅ **Socket.IO Real-time**: Đã implement với events `chat:new-message`
+- ✅ **Full Chat CRUD**: Create conversation, get messages, send messages, mark as read
 
 ### 2. **Quyền truy cập:**
 
@@ -1025,21 +1096,36 @@ export default ChatMain;
 - `document`: Tài liệu
 - `system`: Tin nhắn hệ thống
 
-### 4. **Error Handling:**
+### 4. **Socket.IO Events:**
+
+- `chat:new-message`: Tin nhắn mới được gửi real-time
+- `conversation:${id}`: Room cho conversation cụ thể
+- `user:${id}`: Room cho user cụ thể
+
+### 5. **Error Handling:**
 
 Luôn kiểm tra response status và handle errors appropriately.
 
-### 5. **Security:**
+### 6. **Security:**
 
 - Sử dụng JWT token trong Authorization header
 - Validate user permissions trên backend
+- Socket.IO authentication middleware
 
 ## Next Steps
 
-1. **Implement Send Message API** trên backend
-2. **Setup WebSocket** cho real-time messaging
-3. **Add file upload** cho attachments
-4. **Implement push notifications**
-5. **Add message search functionality**
+1. ✅ **Send Message API** - Đã implement
+2. ✅ **Socket.IO Real-time** - Đã implement
+3. 🔄 **Add file upload** cho attachments
+4. 🔄 **Implement push notifications**
+5. 🔄 **Add message search functionality**
 
-Hướng dẫn này cung cấp foundation hoàn chỉnh để implement chat system. Frontend developers có thể customize UI/UX theo yêu cầu cụ thể của dự án.
+## Test Script
+
+Sử dụng script `test-chat-send-message.sh` để test toàn bộ chat flow:
+
+```bash
+./test-chat-send-message.sh
+```
+
+Hướng dẫn này cung cấp implementation hoàn chỉnh cho chat system với real-time messaging. Frontend developers có thể sử dụng ngay để build chat interface!
