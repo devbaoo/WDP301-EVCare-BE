@@ -6,6 +6,31 @@ import ServiceRecord from "../models/serviceRecord.js";
 import TechnicianSchedule from "../models/technicianSchedule.js";
 import invoiceService from "./invoiceService.js";
 
+// Helper function to calculate total amount from quoteDetails
+const calculateQuoteAmount = (quoteDetails) => {
+  if (typeof quoteDetails !== 'object' || !quoteDetails) {
+    return 0;
+  }
+
+  let total = 0;
+
+  // Calculate items total
+  if (Array.isArray(quoteDetails.items)) {
+    total += quoteDetails.items.reduce((sum, item) => {
+      return sum + (item.quantity || 0) * (item.unitPrice || 0);
+    }, 0);
+  }
+
+  // Calculate labor total
+  if (quoteDetails.labor && typeof quoteDetails.labor === 'object') {
+    const laborMinutes = quoteDetails.labor.minutes || 0;
+    const laborRate = quoteDetails.labor.rate || 0;
+    total += (laborMinutes / 60) * laborRate; // Convert minutes to hours
+  }
+
+  return total;
+};
+
 const workProgressTrackingService = {
   // Internal helper: set technician availability to available for the appointment date
   async _setTechnicianAvailableForAppointment(technicianId, appointmentId) {
@@ -296,7 +321,7 @@ const workProgressTrackingService = {
             updatedRecord.technicianId._id || updatedRecord.technicianId,
             updatedRecord.appointmentId._id || updatedRecord.appointmentId
           );
-        } catch (_) {}
+        } catch (_) { }
       }
 
       return updatedRecord;
@@ -330,6 +355,50 @@ const workProgressTrackingService = {
         inspectionData.quoteAmount < 0
       ) {
         throw new Error("Quote amount cannot be negative");
+      }
+
+      // Validate quoteDetails structure if provided
+      if (inspectionData.quoteDetails) {
+        // Support both string (legacy) and object (new) format
+        if (typeof inspectionData.quoteDetails === 'object') {
+          const { items, labor } = inspectionData.quoteDetails;
+
+          // Validate items if provided
+          if (items && Array.isArray(items)) {
+            for (const item of items) {
+              if (!item.name || typeof item.quantity !== 'number' || typeof item.unitPrice !== 'number') {
+                throw new Error("Each item must have name, quantity, and unitPrice");
+              }
+              if (item.quantity <= 0 || item.unitPrice < 0) {
+                throw new Error("Item quantity must be positive and unitPrice cannot be negative");
+              }
+            }
+          }
+
+          // Validate labor if provided
+          if (labor && typeof labor === 'object') {
+            if (labor.minutes !== undefined && (typeof labor.minutes !== 'number' || labor.minutes < 0)) {
+              throw new Error("Labor minutes must be a non-negative number");
+            }
+            if (labor.rate !== undefined && (typeof labor.rate !== 'number' || labor.rate < 0)) {
+              throw new Error("Labor rate must be a non-negative number");
+            }
+          }
+
+          // Auto-calculate quote amount if not provided but quoteDetails has items/labor
+          if (inspectionData.quoteAmount === undefined) {
+            const calculatedAmount = calculateQuoteAmount(inspectionData.quoteDetails);
+            if (calculatedAmount > 0) {
+              inspectionData.quoteAmount = calculatedAmount;
+            }
+          } else {
+            // Validate that provided quoteAmount matches calculated amount (with tolerance)
+            const calculatedAmount = calculateQuoteAmount(inspectionData.quoteDetails);
+            if (calculatedAmount > 0 && Math.abs(inspectionData.quoteAmount - calculatedAmount) > 1) {
+              console.warn(`Quote amount mismatch: provided ${inspectionData.quoteAmount}, calculated ${calculatedAmount}`);
+            }
+          }
+        }
       }
 
       // Update inspection data
@@ -367,7 +436,7 @@ const workProgressTrackingService = {
             to: "inspection_completed",
             at: new Date(),
           });
-        } catch (_) {}
+        } catch (_) { }
         if (updateData.currentStatus === "quote_provided") {
           appointment.status = "quote_provided";
           appointment.inspectionAndQuote = {
@@ -459,7 +528,7 @@ const workProgressTrackingService = {
               to: "quote_approved",
               at: new Date(),
             });
-          } catch (_) {}
+          } catch (_) { }
           appointment.status = "quote_approved";
           appointment.inspectionAndQuote.quoteStatus = "approved";
           appointment.inspectionAndQuote.customerResponseAt = new Date();
@@ -501,7 +570,7 @@ const workProgressTrackingService = {
               to: "quote_rejected",
               at: new Date(),
             });
-          } catch (_) {}
+          } catch (_) { }
           appointment.status = "quote_rejected";
           appointment.inspectionAndQuote.quoteStatus = "rejected";
           appointment.inspectionAndQuote.customerResponseAt = new Date();
@@ -563,7 +632,7 @@ const workProgressTrackingService = {
             to: "maintenance_in_progress",
             at: new Date(),
           });
-        } catch (_) {}
+        } catch (_) { }
         appointment.status = "maintenance_in_progress";
         await appointment.save();
       }
@@ -622,7 +691,7 @@ const workProgressTrackingService = {
             to: "maintenance_completed",
             at: new Date(),
           });
-        } catch (_) {}
+        } catch (_) { }
         appointment.status = "maintenance_completed";
         appointment.completion = {
           isCompleted: true,
@@ -665,7 +734,7 @@ const workProgressTrackingService = {
             updatedRecord.technicianId._id || updatedRecord.technicianId,
             updatedRecord.appointmentId._id || updatedRecord.appointmentId
           );
-        } catch (_) {}
+        } catch (_) { }
       }
 
       return updatedRecord;

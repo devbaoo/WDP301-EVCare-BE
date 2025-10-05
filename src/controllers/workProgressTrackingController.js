@@ -309,6 +309,66 @@ const workProgressTrackingController = {
         });
       }
 
+      // Additional validation for new quoteDetails object format
+      if (quoteDetails && typeof quoteDetails === 'object' && !Array.isArray(quoteDetails)) {
+        const { items, labor } = quoteDetails;
+
+        // Validate items structure
+        if (items && !Array.isArray(items)) {
+          return res.status(400).json({
+            success: false,
+            message: "Quote details items must be an array",
+          });
+        }
+
+        if (items && items.length > 0) {
+          for (let i = 0; i < items.length; i++) {
+            const item = items[i];
+            if (!item.name || typeof item.quantity !== 'number' || typeof item.unitPrice !== 'number') {
+              return res.status(400).json({
+                success: false,
+                message: `Item ${i + 1}: name, quantity, and unitPrice are required`,
+              });
+            }
+            if (item.quantity <= 0) {
+              return res.status(400).json({
+                success: false,
+                message: `Item ${i + 1}: quantity must be greater than 0`,
+              });
+            }
+            if (item.unitPrice < 0) {
+              return res.status(400).json({
+                success: false,
+                message: `Item ${i + 1}: unitPrice cannot be negative`,
+              });
+            }
+          }
+        }
+
+        // Validate labor structure
+        if (labor && typeof labor !== 'object') {
+          return res.status(400).json({
+            success: false,
+            message: "Labor details must be an object",
+          });
+        }
+
+        if (labor) {
+          if (labor.minutes !== undefined && (typeof labor.minutes !== 'number' || labor.minutes < 0)) {
+            return res.status(400).json({
+              success: false,
+              message: "Labor minutes must be a non-negative number",
+            });
+          }
+          if (labor.rate !== undefined && (typeof labor.rate !== 'number' || labor.rate < 0)) {
+            return res.status(400).json({
+              success: false,
+              message: "Labor rate must be a non-negative number",
+            });
+          }
+        }
+      }
+
       const updatedRecord =
         await workProgressTrackingService.submitInspectionAndQuote(id, {
           vehicleCondition,

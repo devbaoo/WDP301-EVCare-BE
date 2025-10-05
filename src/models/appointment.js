@@ -95,7 +95,7 @@ const AppointmentSchema = new mongoose.Schema(
       vehicleCondition: { type: String }, // Tình trạng xe
       diagnosisDetails: { type: String }, // Chi tiết chẩn đoán
       quoteAmount: { type: Number, min: 0 }, // Số tiền báo giá
-      quoteDetails: { type: String }, // Chi tiết báo giá
+      quoteDetails: { type: mongoose.Schema.Types.Mixed }, // Chi tiết báo giá - Support both String and Object
       quotedAt: { type: Date }, // Thời gian báo giá
       quoteStatus: {
         type: String,

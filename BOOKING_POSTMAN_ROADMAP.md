@@ -131,6 +131,21 @@ Authorization: Bearer <technician_token|staff_token>
 }
 ```
 
+**Lưu ý:**
+
+- `quoteDetails` hỗ trợ cả format string (legacy) và object (mới)
+- Khi dùng object format:
+  - `items[]`: Mảng các item cần thay thế/sửa chữa
+    - `partId`: ID của part trong inventory (optional, để tự động reservation)
+    - `name`: Tên item (required)
+    - `quantity`: Số lượng (required, > 0)
+    - `unitPrice`: Giá đơn vị (required, >= 0)
+  - `labor`: Chi phí nhân công
+    - `minutes`: Thời gian làm việc (minutes, >= 0)
+    - `rate`: Giá per hour (>= 0)
+- Nếu không truyền `quoteAmount`, hệ thống sẽ tự tính từ `items` và `labor`
+- Khi customer approve quote, hệ thống sẽ tự động tạo inventory reservation cho các items có `partId`
+
 ### 5) Customer – Duyệt báo giá
 
 ```
