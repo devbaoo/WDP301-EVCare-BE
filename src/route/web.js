@@ -977,13 +977,13 @@ let initWebRoutes = (app) => {
   router.get(
     "/api/parts/:id",
     protect,
-    authorize("admin", "staff"),
+    authorize("admin", "staff", "technician"),
     partController.getPartById
   );
   router.get(
     "/api/parts/category/:category",
     protect,
-    authorize("admin", "staff"),
+    authorize("admin", "staff", "technician"),
     partController.getPartsByCategory
   );
   router.get(
