@@ -289,8 +289,7 @@ const workProgressTrackingController = {
         vehicleCondition,
         diagnosisDetails,
         inspectionNotes,
-        quoteAmount,
-        quoteDetails,
+        quoteDetails, // quoteAmount will be auto-calculated
       } = req.body;
 
       // Validate required fields
@@ -301,17 +300,17 @@ const workProgressTrackingController = {
         });
       }
 
-      // If quote is provided, validate quote details
-      if (quoteAmount !== undefined && !quoteDetails) {
+      // Validate that quoteDetails is provided for quote creation
+      if (!quoteDetails) {
         return res.status(400).json({
           success: false,
-          message: "Quote details are required when providing a quote amount",
+          message: "Quote details with items are required",
         });
       }
 
       // Additional validation for new quoteDetails object format
       if (quoteDetails && typeof quoteDetails === 'object' && !Array.isArray(quoteDetails)) {
-        const { items, labor } = quoteDetails;
+        const { items } = quoteDetails;
 
         // Validate items structure
         if (items && !Array.isArray(items)) {
@@ -343,29 +342,11 @@ const workProgressTrackingController = {
               });
             }
           }
-        }
-
-        // Validate labor structure
-        if (labor && typeof labor !== 'object') {
+        } else {
           return res.status(400).json({
             success: false,
-            message: "Labor details must be an object",
+            message: "Quote must have at least one item",
           });
-        }
-
-        if (labor) {
-          if (labor.minutes !== undefined && (typeof labor.minutes !== 'number' || labor.minutes < 0)) {
-            return res.status(400).json({
-              success: false,
-              message: "Labor minutes must be a non-negative number",
-            });
-          }
-          if (labor.rate !== undefined && (typeof labor.rate !== 'number' || labor.rate < 0)) {
-            return res.status(400).json({
-              success: false,
-              message: "Labor rate must be a non-negative number",
-            });
-          }
         }
       }
 
@@ -374,17 +355,13 @@ const workProgressTrackingController = {
           vehicleCondition,
           diagnosisDetails,
           inspectionNotes,
-          quoteAmount,
-          quoteDetails,
+          quoteDetails, // quoteAmount will be auto-calculated in service
         });
 
       res.status(200).json({
         success: true,
         data: updatedRecord,
-        message:
-          quoteAmount !== undefined
-            ? "Inspection completed and quote provided successfully"
-            : "Inspection completed successfully",
+        message: "Inspection completed and quote provided successfully",
       });
     } catch (error) {
       res.status(500).json({
@@ -750,6 +727,57 @@ const workProgressTrackingController = {
         success: false,
         message:
           error.message || "Failed to fetch service center performance metrics",
+      });
+    }
+  },
+
+  // Add technician to work progress
+  addTechnicianToProgress: async (req, res) => {
+    try {
+      const { id } = req.params;
+      const { technicianId, role } = req.body;
+
+      if (!technicianId) {
+        return res.status(400).json({
+          success: false,
+          message: "Technician ID is required",
+        });
+      }
+
+      const result = await workProgressTrackingService.addTechnicianToProgress(id, {
+        technicianId,
+        role: role || "assistant"
+      });
+
+      res.status(200).json({
+        success: true,
+        data: result,
+        message: "Technician added to work progress successfully",
+      });
+    } catch (error) {
+      res.status(500).json({
+        success: false,
+        message: error.message || "Failed to add technician to work progress",
+      });
+    }
+  },
+
+  // Remove technician from work progress
+  removeTechnicianFromProgress: async (req, res) => {
+    try {
+      const { id, technicianId } = req.params;
+
+      const result = await workProgressTrackingService.removeTechnicianFromProgress(id, technicianId);
+
+      res.status(200).json({
+        success: true,
+        data: result,
+        message: "Technician removed from work progress successfully",
+      });
+    } catch (error) {
+      res.status(500).json({
+        success: false,
+        message: error.message || "Failed to remove technician from work progress",
       });
     }
   },

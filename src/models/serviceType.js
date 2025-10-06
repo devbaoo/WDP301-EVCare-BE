@@ -28,6 +28,22 @@ const ServiceTypeSchema = new mongoose.Schema(
             },
             requiredSkills: [String], // Kỹ năng cần thiết
             tools: [String], // Dụng cụ cần thiết
+
+            // Yêu cầu về nhân lực
+            minTechnicians: {
+                type: Number,
+                required: true,
+                min: 1,
+                default: 1,
+                description: "Số lượng kỹ thuật viên tối thiểu cần thiết"
+            },
+            maxTechnicians: {
+                type: Number,
+                required: true,
+                min: 1,
+                default: 1,
+                description: "Số lượng kỹ thuật viên tối đa có thể tham gia"
+            },
         },
 
         // Giá cả
@@ -112,12 +128,23 @@ const ServiceTypeSchema = new mongoose.Schema(
     }
 );
 
+// Validation middleware
+ServiceTypeSchema.pre('save', function (next) {
+    // Validate technician requirements
+    if (this.serviceDetails.maxTechnicians < this.serviceDetails.minTechnicians) {
+        return next(new Error('maxTechnicians must be greater than or equal to minTechnicians'));
+    }
+    next();
+});
+
 // Indexes
 ServiceTypeSchema.index({ name: 1 });
 ServiceTypeSchema.index({ category: 1 });
 ServiceTypeSchema.index({ status: 1 });
 ServiceTypeSchema.index({ tags: 1 });
 ServiceTypeSchema.index({ "pricing.basePrice": 1 });
+ServiceTypeSchema.index({ "serviceDetails.minTechnicians": 1 });
+ServiceTypeSchema.index({ "serviceDetails.maxTechnicians": 1 });
 
 // Virtual for total estimated time
 ServiceTypeSchema.virtual("totalEstimatedTime").get(function () {

@@ -14,18 +14,11 @@ const calculateQuoteAmount = (quoteDetails) => {
 
   let total = 0;
 
-  // Calculate items total
+  // Calculate items total only
   if (Array.isArray(quoteDetails.items)) {
     total += quoteDetails.items.reduce((sum, item) => {
       return sum + (item.quantity || 0) * (item.unitPrice || 0);
     }, 0);
-  }
-
-  // Calculate labor total
-  if (quoteDetails.labor && typeof quoteDetails.labor === 'object') {
-    const laborMinutes = quoteDetails.labor.minutes || 0;
-    const laborRate = quoteDetails.labor.rate || 0;
-    total += (laborMinutes / 60) * laborRate; // Convert minutes to hours
   }
 
   return total;
@@ -96,21 +89,46 @@ const workProgressTrackingService = {
     }
   },
 
-  // Create new progress record
+  // Create new progress record with technician team
   createProgressRecord: async (progressData) => {
     try {
-      // Check if technician exists
+      // Check if primary technician exists
       const technicianExists = await User.findById(progressData.technicianId);
       if (!technicianExists) {
-        throw new Error("Technician not found");
+        throw new Error("Primary technician not found");
       }
 
-      // Check if appointment exists
-      const appointmentExists = await Appointment.findById(
-        progressData.appointmentId
-      );
-      if (!appointmentExists) {
+      // Check if appointment exists and get service type requirements
+      const appointment = await Appointment.findById(progressData.appointmentId)
+        .populate('serviceType', 'serviceDetails.minTechnicians serviceDetails.maxTechnicians name');
+      if (!appointment) {
         throw new Error("Appointment not found");
+      }
+
+      // Validate technician team size against service requirements
+      const totalTechnicians = 1 + (progressData.technicians ? progressData.technicians.length : 0);
+      const minRequired = appointment.serviceType?.serviceDetails?.minTechnicians || 1;
+      const maxAllowed = appointment.serviceType?.serviceDetails?.maxTechnicians || 1;
+
+      if (totalTechnicians < minRequired) {
+        throw new Error(`Service "${appointment.serviceType?.name}" requires at least ${minRequired} technician(s). Currently assigned: ${totalTechnicians}`);
+      }
+
+      if (totalTechnicians > maxAllowed) {
+        throw new Error(`Service "${appointment.serviceType?.name}" allows maximum ${maxAllowed} technician(s). Currently assigned: ${totalTechnicians}`);
+      }
+
+      // Validate additional technicians exist
+      if (progressData.technicians && progressData.technicians.length > 0) {
+        for (const tech of progressData.technicians) {
+          const techExists = await User.findById(tech.technicianId);
+          if (!techExists) {
+            throw new Error(`Technician with ID ${tech.technicianId} not found`);
+          }
+          if (tech.technicianId.toString() === progressData.technicianId.toString()) {
+            throw new Error("Primary technician cannot be in additional technicians list");
+          }
+        }
       }
 
       // Check if service record exists if provided
@@ -361,7 +379,7 @@ const workProgressTrackingService = {
       if (inspectionData.quoteDetails) {
         // Support both string (legacy) and object (new) format
         if (typeof inspectionData.quoteDetails === 'object') {
-          const { items, labor } = inspectionData.quoteDetails;
+          const { items } = inspectionData.quoteDetails;
 
           // Validate items if provided
           if (items && Array.isArray(items)) {
@@ -375,28 +393,12 @@ const workProgressTrackingService = {
             }
           }
 
-          // Validate labor if provided
-          if (labor && typeof labor === 'object') {
-            if (labor.minutes !== undefined && (typeof labor.minutes !== 'number' || labor.minutes < 0)) {
-              throw new Error("Labor minutes must be a non-negative number");
-            }
-            if (labor.rate !== undefined && (typeof labor.rate !== 'number' || labor.rate < 0)) {
-              throw new Error("Labor rate must be a non-negative number");
-            }
-          }
-
-          // Auto-calculate quote amount if not provided but quoteDetails has items/labor
-          if (inspectionData.quoteAmount === undefined) {
-            const calculatedAmount = calculateQuoteAmount(inspectionData.quoteDetails);
-            if (calculatedAmount > 0) {
-              inspectionData.quoteAmount = calculatedAmount;
-            }
+          // Auto-calculate quote amount from items (always override any provided quoteAmount)
+          const calculatedAmount = calculateQuoteAmount(inspectionData.quoteDetails);
+          if (calculatedAmount > 0) {
+            inspectionData.quoteAmount = calculatedAmount;
           } else {
-            // Validate that provided quoteAmount matches calculated amount (with tolerance)
-            const calculatedAmount = calculateQuoteAmount(inspectionData.quoteDetails);
-            if (calculatedAmount > 0 && Math.abs(inspectionData.quoteAmount - calculatedAmount) > 1) {
-              console.warn(`Quote amount mismatch: provided ${inspectionData.quoteAmount}, calculated ${calculatedAmount}`);
-            }
+            throw new Error("Quote must have at least one item with valid quantity and price");
           }
         }
       }
@@ -1271,6 +1273,121 @@ const workProgressTrackingService = {
       throw new Error(
         `Error calculating service center performance: ${error.message}`
       );
+    }
+  },
+
+  // Assign additional technician to work progress
+  addTechnicianToProgress: async (progressId, technicianData) => {
+    try {
+      if (!mongoose.Types.ObjectId.isValid(progressId)) {
+        throw new Error("Invalid progress record ID");
+      }
+
+      const progressRecord = await WorkProgressTracking.findById(progressId)
+        .populate('appointmentId')
+        .populate({
+          path: 'appointmentId',
+          populate: {
+            path: 'serviceType',
+            select: 'serviceDetails.maxTechnicians name'
+          }
+        });
+
+      if (!progressRecord) {
+        throw new Error("Progress record not found");
+      }
+
+      // Check if technician exists
+      const technician = await User.findById(technicianData.technicianId);
+      if (!technician) {
+        throw new Error("Technician not found");
+      }
+
+      // Check if already assigned
+      const isAlreadyAssigned = progressRecord.technicians.some(
+        tech => tech.technicianId.toString() === technicianData.technicianId.toString()
+      ) || progressRecord.technicianId.toString() === technicianData.technicianId.toString();
+
+      if (isAlreadyAssigned) {
+        throw new Error("Technician is already assigned to this work progress");
+      }
+
+      // Check maximum technicians limit
+      const currentTechCount = 1 + progressRecord.technicians.length; // +1 for primary technician
+      const maxAllowed = progressRecord.appointmentId?.serviceType?.serviceDetails?.maxTechnicians || 1;
+
+      if (currentTechCount >= maxAllowed) {
+        throw new Error(`Maximum ${maxAllowed} technicians allowed for service "${progressRecord.appointmentId?.serviceType?.name}"`);
+      }
+
+      // Add technician
+      progressRecord.technicians.push({
+        technicianId: technicianData.technicianId,
+        role: technicianData.role || "assistant",
+        assignedAt: new Date(),
+        isActive: true
+      });
+
+      await progressRecord.save();
+
+      return await WorkProgressTracking.findById(progressId)
+        .populate("technicianId", "firstName lastName email phoneNumber")
+        .populate("technicians.technicianId", "firstName lastName email phoneNumber")
+        .populate("appointmentId")
+        .populate("serviceRecordId");
+    } catch (error) {
+      throw new Error(`Error adding technician to progress: ${error.message}`);
+    }
+  },
+
+  // Remove technician from work progress
+  removeTechnicianFromProgress: async (progressId, technicianId) => {
+    try {
+      if (!mongoose.Types.ObjectId.isValid(progressId)) {
+        throw new Error("Invalid progress record ID");
+      }
+
+      const progressRecord = await WorkProgressTracking.findById(progressId)
+        .populate('appointmentId')
+        .populate({
+          path: 'appointmentId',
+          populate: {
+            path: 'serviceType',
+            select: 'serviceDetails.minTechnicians name'
+          }
+        });
+
+      if (!progressRecord) {
+        throw new Error("Progress record not found");
+      }
+
+      // Cannot remove primary technician
+      if (progressRecord.technicianId.toString() === technicianId.toString()) {
+        throw new Error("Cannot remove primary technician. Reassign primary technician first.");
+      }
+
+      // Check minimum technicians requirement
+      const currentTechCount = 1 + progressRecord.technicians.filter(t => t.isActive).length;
+      const minRequired = progressRecord.appointmentId?.serviceType?.serviceDetails?.minTechnicians || 1;
+
+      if (currentTechCount - 1 < minRequired) {
+        throw new Error(`Minimum ${minRequired} technicians required for service "${progressRecord.appointmentId?.serviceType?.name}"`);
+      }
+
+      // Remove technician
+      progressRecord.technicians = progressRecord.technicians.filter(
+        tech => tech.technicianId.toString() !== technicianId.toString()
+      );
+
+      await progressRecord.save();
+
+      return await WorkProgressTracking.findById(progressId)
+        .populate("technicianId", "firstName lastName email phoneNumber")
+        .populate("technicians.technicianId", "firstName lastName email phoneNumber")
+        .populate("appointmentId")
+        .populate("serviceRecordId");
+    } catch (error) {
+      throw new Error(`Error removing technician from progress: ${error.message}`);
     }
   },
 };
