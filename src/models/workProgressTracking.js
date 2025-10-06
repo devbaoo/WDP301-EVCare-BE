@@ -2,11 +2,35 @@ import mongoose from "mongoose";
 
 const WorkProgressTrackingSchema = new mongoose.Schema(
   {
+    // Support multiple technicians for team-based services
+    technicians: [{
+      technicianId: {
+        type: mongoose.Schema.Types.ObjectId,
+        ref: "User",
+        required: true,
+      },
+      role: {
+        type: String,
+        enum: ["lead", "assistant", "specialist"],
+        default: "assistant",
+      },
+      assignedAt: {
+        type: Date,
+        default: Date.now,
+      },
+      isActive: {
+        type: Boolean,
+        default: true,
+      }
+    }],
+
+    // Backward compatibility - primary technician
     technicianId: {
       type: mongoose.Schema.Types.ObjectId,
-      ref: "User", // kỹ thuật viên
+      ref: "User", // kỹ thuật viên chính
       required: true,
     },
+
     appointmentId: {
       type: mongoose.Schema.Types.ObjectId,
       ref: "Appointment",

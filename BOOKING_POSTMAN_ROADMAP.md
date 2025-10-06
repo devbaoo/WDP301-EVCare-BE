@@ -120,30 +120,25 @@ Authorization: Bearer <technician_token|staff_token>
   "vehicleCondition": "Ổn định",
   "diagnosisDetails": "Cần thay dầu và lọc",
   "inspectionNotes": "Không lỗi nghiêm trọng",
-  "quoteAmount": 500000,
   "quoteDetails": {
     "items": [
       { "partId": "<partId1>", "quantity": 1, "unitPrice": 200000, "name": "Dầu" },
       { "partId": "<partId2>", "quantity": 1, "unitPrice": 300000, "name": "Lọc dầu" }
-    ],
-    "labor": { "minutes": 60, "rate": 0 }
+    ]
   }
 }
 ```
 
 **Lưu ý:**
 
-- `quoteDetails` hỗ trợ cả format string (legacy) và object (mới)
-- Khi dùng object format:
-  - `items[]`: Mảng các item cần thay thế/sửa chữa
-    - `partId`: ID của part trong inventory (optional, để tự động reservation)
-    - `name`: Tên item (required)
-    - `quantity`: Số lượng (required, > 0)
-    - `unitPrice`: Giá đơn vị (required, >= 0)
-  - `labor`: Chi phí nhân công
-    - `minutes`: Thời gian làm việc (minutes, >= 0)
-    - `rate`: Giá per hour (>= 0)
-- Nếu không truyền `quoteAmount`, hệ thống sẽ tự tính từ `items` và `labor`
+- `quoteAmount` **không cần truyền** - hệ thống tự động tính từ items
+- `quoteDetails` chỉ cần object với `items[]` array:
+  - `partId`: ID của part trong inventory (optional, để tự động reservation)
+  - `name`: Tên item (required)
+  - `quantity`: Số lượng (required, > 0)
+  - `unitPrice`: Giá đơn vị (required, >= 0) - lấy từ parts database
+- Hệ thống sẽ tự động tính: `quoteAmount = sum(quantity * unitPrice)`
+- UX tối ưu: Technician chỉ cần select parts và quantity, giá tự động load
 - Khi customer approve quote, hệ thống sẽ tự động tạo inventory reservation cho các items có `partId`
 
 ### 5) Customer – Duyệt báo giá

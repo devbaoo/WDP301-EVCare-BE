@@ -790,6 +790,20 @@ let initWebRoutes = (app) => {
     workProgressTrackingController.getServiceCenterPerformance
   );
 
+  // Technician team management
+  router.post(
+    "/api/work-progress/:id/technicians",
+    protect,
+    authorize("admin", "staff"),
+    workProgressTrackingController.addTechnicianToProgress
+  );
+  router.delete(
+    "/api/work-progress/:id/technicians/:technicianId",
+    protect,
+    authorize("admin", "staff"),
+    workProgressTrackingController.removeTechnicianFromProgress
+  );
+
   // ===== STAFF ASSIGNMENT =====
   router.get(
     "/api/staff-assignments",
