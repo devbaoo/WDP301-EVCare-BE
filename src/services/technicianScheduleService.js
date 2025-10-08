@@ -2,6 +2,8 @@ import mongoose from "mongoose";
 import TechnicianSchedule from "../models/technicianSchedule.js";
 import User from "../models/user.js";
 import ServiceCenter from "../models/serviceCenter.js";
+import Appointment from "../models/appointment.js";
+import ServiceType from "../models/serviceType.js";
 
 const technicianScheduleService = {
   // Check if a technician is already assigned to another center
@@ -122,7 +124,7 @@ const technicianScheduleService = {
               currentDate.getMonth(),
               currentDate.getDate()
             ) +
-              7 * 60 * 60 * 1000
+            7 * 60 * 60 * 1000
           );
 
           // Kiểm tra xem đã có lịch cho ngày này chưa
@@ -143,7 +145,7 @@ const technicianScheduleService = {
                 currentDate.getMonth(),
                 currentDate.getDate()
               ) +
-                7 * 60 * 60 * 1000
+              7 * 60 * 60 * 1000
             );
 
             const newSchedule = new TechnicianSchedule({
@@ -563,6 +565,91 @@ const technicianScheduleService = {
       return schedule;
     } catch (error) {
       throw new Error(`Error adding appointment to schedule: ${error.message}`);
+    }
+  },
+
+  // Add appointment to multiple schedules (for team assignments)
+  addAppointmentToMultipleSchedules: async (scheduleIds = [], appointmentId) => {
+    try {
+      if (!Array.isArray(scheduleIds) || scheduleIds.length === 0) {
+        throw new Error("scheduleIds must be a non-empty array");
+      }
+
+      if (!mongoose.Types.ObjectId.isValid(appointmentId)) {
+        throw new Error("Invalid appointment ID");
+      }
+
+      // Load appointment to check serviceType and other constraints
+      const appointment = await Appointment.findById(appointmentId).populate(
+        "serviceType"
+      );
+      if (!appointment) {
+        throw new Error("Appointment not found");
+      }
+
+      const serviceType = appointment.serviceType
+        ? await ServiceType.findById(appointment.serviceType)
+        : null;
+
+      // Validate min/max technicians if serviceType defines them
+      const minTech = serviceType && serviceType.minTechnicians ? serviceType.minTechnicians : 1;
+      const maxTech = serviceType && serviceType.maxTechnicians ? serviceType.maxTechnicians : 1;
+
+      if (scheduleIds.length < minTech) {
+        throw new Error(
+          `This service requires at least ${minTech} technician(s) to be assigned`
+        );
+      }
+
+      if (scheduleIds.length > maxTech) {
+        throw new Error(
+          `This service allows at most ${maxTech} technician(s) to be assigned`
+        );
+      }
+
+      // Load schedules and ensure they are valid and belong to the same center/date as the appointment
+      const schedules = await TechnicianSchedule.find({ _id: { $in: scheduleIds } });
+      if (schedules.length !== scheduleIds.length) {
+        throw new Error("One or more schedules not found");
+      }
+
+      // Ensure schedules are not for technicians assigned to other centers or conflicting
+      const centerIds = new Set(schedules.map((s) => s.centerId.toString()));
+      if (centerIds.size > 1) {
+        throw new Error("All schedules must belong to the same service center");
+      }
+
+      // Optionally ensure appointment's serviceCenter matches schedules' center
+      if (appointment.serviceCenter) {
+        const apptCenterId = appointment.serviceCenter.toString();
+        if (!centerIds.has(apptCenterId)) {
+          throw new Error("Schedules' center does not match appointment's service center");
+        }
+      }
+
+      // Add appointment to each schedule (use $addToSet to avoid duplicates)
+      const updatedSchedules = [];
+      for (const scheduleId of scheduleIds) {
+        const updated = await TechnicianSchedule.findByIdAndUpdate(
+          scheduleId,
+          {
+            $addToSet: { assignedAppointments: appointmentId },
+            $set: { availability: "busy" },
+          },
+          { new: true, runValidators: true }
+        )
+          .populate("technicianId", "firstName lastName email phoneNumber")
+          .populate("centerId", "name address")
+          .populate("assignedAppointments");
+
+        updatedSchedules.push(updated);
+      }
+
+      return updatedSchedules;
+    } catch (error) {
+      throw new Error(
+        `Error adding appointment to multiple schedules: ${error.message}`
+      );
     }
   },
 

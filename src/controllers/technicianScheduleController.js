@@ -388,7 +388,7 @@ const technicianScheduleController = {
   addAppointmentToSchedule: async (req, res) => {
     try {
       const { id } = req.params;
-      const { appointmentId } = req.body;
+      const { appointmentId, scheduleIds } = req.body;
 
       if (!appointmentId) {
         return res.status(400).json({
@@ -397,6 +397,21 @@ const technicianScheduleController = {
         });
       }
 
+      // If caller provided scheduleIds array, add appointment to multiple schedules
+      if (Array.isArray(scheduleIds) && scheduleIds.length > 0) {
+        const updatedSchedules = await technicianScheduleService.addAppointmentToMultipleSchedules(
+          scheduleIds,
+          appointmentId
+        );
+
+        return res.status(200).json({
+          success: true,
+          data: updatedSchedules,
+          message: "Appointment added to multiple schedules successfully",
+        });
+      }
+
+      // Fallback: single schedule (path preserved for backward compatibility)
       const updatedSchedule =
         await technicianScheduleService.addAppointmentToSchedule(
           id,
@@ -560,9 +575,8 @@ const technicianScheduleController = {
       res.status(200).json({
         success: true,
         data: updatedSchedule,
-        message: `Leave request ${
-          action === "approve" ? "approved" : "rejected"
-        } successfully`,
+        message: `Leave request ${action === "approve" ? "approved" : "rejected"
+          } successfully`,
       });
     } catch (error) {
       res.status(500).json({
