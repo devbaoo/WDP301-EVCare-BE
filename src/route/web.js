@@ -387,6 +387,13 @@ let initWebRoutes = (app) => {
     "/api/service-packages/vehicle/:vehicleId/compatible",
     servicePackageController.getCompatiblePackages
   );
+
+  // Ratings (aggregated) for a service center
+  router.get(
+    "/api/service-centers/:centerId/ratings",
+    protect,
+    feedbackController.getServiceCenterRatings
+  );
   router.post(
     "/api/service-packages",
     protect,
