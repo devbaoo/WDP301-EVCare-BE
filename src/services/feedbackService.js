@@ -88,10 +88,55 @@ const deleteFeedback = async (appointmentId, customerId) => {
     }
 };
 
+// Get aggregated ratings for a service center
+const getServiceCenterRatings = async (centerId) => {
+    try {
+        // Aggregate appointments for this center that have rating.overall
+        const Appointment = (await import("../models/appointment.js")).default;
+
+        const pipeline = [
+            { $match: { serviceCenter: Appointment.db.Types.ObjectId(centerId), "rating.overall": { $exists: true, $ne: null } } },
+            {
+                $group: {
+                    _id: "$serviceCenter",
+                    count: { $sum: 1 },
+                    avgOverall: { $avg: "$rating.overall" },
+                    avgService: { $avg: "$rating.service" },
+                    avgTechnician: { $avg: "$rating.technician" },
+                    avgFacility: { $avg: "$rating.facility" }
+                }
+            },
+            {
+                $project: {
+                    _id: 0,
+                    count: 1,
+                    avgOverall: { $round: ["$avgOverall", 2] },
+                    avgService: { $round: ["$avgService", 2] },
+                    avgTechnician: { $round: ["$avgTechnician", 2] },
+                    avgFacility: { $round: ["$avgFacility", 2] }
+                }
+            }
+        ];
+
+        const result = await Appointment.aggregate(pipeline);
+
+        if (!result || result.length === 0) {
+            return { success: true, statusCode: 200, message: "Lấy rating thành công", data: { count: 0, avgOverall: 0, avgService: 0, avgTechnician: 0, avgFacility: 0 } };
+        }
+
+        return { success: true, statusCode: 200, message: "Lấy rating thành công", data: result[0] };
+    } catch (error) {
+        console.error("Get service center ratings error:", error);
+        return { success: false, statusCode: 500, message: "Lỗi khi lấy rating của trung tâm" };
+    }
+};
+
 export default {
     getFeedback,
     upsertFeedback,
     deleteFeedback,
+    // Get aggregated ratings for a service center
+    getServiceCenterRatings
 };
 
 

@@ -36,10 +36,23 @@ const deleteMyFeedback = async (req, res) => {
     }
 };
 
+// Get aggregated ratings for a service center
+const getServiceCenterRatings = async (req, res) => {
+    try {
+        const { centerId } = req.params;
+        const result = await feedbackService.getServiceCenterRatings(centerId);
+        return res.status(result.statusCode).json({ success: result.success, message: result.message, data: result.data });
+    } catch (error) {
+        console.error("Get service center ratings error:", error);
+        res.status(500).json({ success: false, message: "Server error" });
+    }
+};
+
 export default {
     getMyFeedback,
     upsertMyFeedback,
     deleteMyFeedback,
+    getServiceCenterRatings
 };
 
 
