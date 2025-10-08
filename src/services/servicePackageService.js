@@ -237,20 +237,42 @@ const getCompatiblePackages = async (vehicleId) => {
         const vehicleBrand = vehicleModel.brand;
         const vehicleModelName = vehicleModel.modelName;
 
+        // Helper normalizers: trim, lowercase; for model remove spaces for looser matching
+        const normalize = (s) => (s || "").toString().trim().toLowerCase();
+        const normalizeModel = (s) => normalize(s).replace(/\s+/g, "");
+
+        const vehicleBrandKey = normalize(vehicleBrand);
+        const vehicleModelKey = normalizeModel(vehicleModelName);
+
         // Get all active packages
         const packages = await ServicePackage.find({ isActive: true })
             .populate('includedServices', 'name category pricing compatibleVehicles');
 
-        // Filter compatible packages
-        const compatiblePackages = packages.filter(pkg => {
+        // Filter compatible packages (exact brand+model with normalization)
+        let compatiblePackages = packages.filter(pkg => {
             return (pkg.includedServices || []).some(service => {
                 const list = service?.compatibleVehicles || [];
                 return list.some(cv => {
-                    // cv: { brand, model } expected
-                    return cv && cv.brand === vehicleBrand && cv.model === vehicleModelName;
+                    if (!cv) return false;
+                    const cvBrandKey = normalize(cv.brand);
+                    const cvModelKey = normalizeModel(cv.model);
+                    return cvBrandKey === vehicleBrandKey && cvModelKey === vehicleModelKey;
                 });
             });
         });
+
+        // Fallback: if no exact brand+model matches, return packages that match brand only
+        if ((!compatiblePackages || compatiblePackages.length === 0) && vehicleBrandKey) {
+            const brandOnly = packages.filter(pkg => {
+                return (pkg.includedServices || []).some(service => {
+                    const list = service?.compatibleVehicles || [];
+                    return list.some(cv => cv && normalize(cv.brand) === vehicleBrandKey);
+                });
+            });
+            if (brandOnly && brandOnly.length > 0) {
+                compatiblePackages = brandOnly;
+            }
+        }
 
         return {
             success: true,
