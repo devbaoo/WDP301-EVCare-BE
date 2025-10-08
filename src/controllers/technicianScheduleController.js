@@ -575,9 +575,8 @@ const technicianScheduleController = {
       res.status(200).json({
         success: true,
         data: updatedSchedule,
-        message: `Leave request ${
-          action === "approve" ? "approved" : "rejected"
-        } successfully`,
+        message: `Leave request ${action === "approve" ? "approved" : "rejected"
+          } successfully`,
       });
     } catch (error) {
       res.status(500).json({

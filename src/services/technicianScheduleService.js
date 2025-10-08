@@ -124,7 +124,7 @@ const technicianScheduleService = {
               currentDate.getMonth(),
               currentDate.getDate()
             ) +
-              7 * 60 * 60 * 1000
+            7 * 60 * 60 * 1000
           );
 
           // Kiểm tra xem đã có lịch cho ngày này chưa
@@ -145,7 +145,7 @@ const technicianScheduleService = {
                 currentDate.getMonth(),
                 currentDate.getDate()
               ) +
-                7 * 60 * 60 * 1000
+              7 * 60 * 60 * 1000
             );
 
             const newSchedule = new TechnicianSchedule({
