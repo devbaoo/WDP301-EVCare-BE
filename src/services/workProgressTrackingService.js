@@ -810,6 +810,36 @@ const workProgressTrackingService = {
         .populate("serviceRecordId")
         .populate("paymentDetails.processedBy", "firstName lastName email");
 
+      // Free any technician schedules that had this appointment assigned
+      try {
+        if (appointment) {
+          const schedules = await TechnicianSchedule.find({
+            assignedAppointments: appointment._id,
+          });
+
+          for (const sched of schedules) {
+            const updatedSched = await TechnicianSchedule.findByIdAndUpdate(
+              sched._id,
+              { $pull: { assignedAppointments: appointment._id } },
+              { new: true, runValidators: true }
+            )
+              .populate("technicianId", "firstName lastName email phoneNumber")
+              .populate("centerId", "name address")
+              .populate("assignedAppointments");
+
+            if (updatedSched && updatedSched.assignedAppointments.length === 0) {
+              // no more appointments -> mark available
+              updatedSched.availability = "available";
+              await updatedSched.save();
+            }
+          }
+        }
+      } catch (e) {
+        // best-effort: do not fail payment on schedule cleanup errors
+        // eslint-disable-next-line no-console
+        console.error("Error freeing technician schedules after payment:", e);
+      }
+
       return updatedRecord;
     } catch (error) {
       throw new Error(`Error processing cash payment: ${error.message}`);
