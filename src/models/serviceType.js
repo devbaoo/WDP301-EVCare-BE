@@ -20,15 +20,6 @@ const ServiceTypeSchema = new mongoose.Schema(
 
         // Thông tin dịch vụ
         serviceDetails: {
-            duration: { type: Number, required: true }, // Thời gian thực hiện (phút)
-            complexity: {
-                type: String,
-                enum: ["easy", "medium", "hard", "expert"],
-                default: "medium"
-            },
-            requiredSkills: [String], // Kỹ năng cần thiết
-            tools: [String], // Dụng cụ cần thiết
-
             // Yêu cầu về nhân lực
             minTechnicians: {
                 type: Number,
@@ -58,14 +49,6 @@ const ServiceTypeSchema = new mongoose.Schema(
             isNegotiable: { type: Boolean, default: false },
         },
 
-        // Phụ tùng cần thiết
-        requiredParts: [{
-            partName: { type: String, required: true },
-            partType: { type: String, required: true },
-            quantity: { type: Number, default: 1 },
-            isOptional: { type: Boolean, default: false },
-            estimatedCost: { type: Number, default: 0 },
-        }],
 
         // Xe điện tương thích
         compatibleVehicles: [{
@@ -75,26 +58,6 @@ const ServiceTypeSchema = new mongoose.Schema(
             batteryType: { type: String },
         }],
 
-        // Quy trình thực hiện
-        procedure: {
-            steps: [{
-                stepNumber: { type: Number, required: true },
-                title: { type: String, required: true },
-                description: { type: String, required: true },
-                estimatedTime: { type: Number, required: true }, // phút
-                requiredTools: [String],
-                safetyNotes: [String],
-            }],
-            totalSteps: { type: Number, required: true },
-        },
-
-        // Yêu cầu đặc biệt
-        requirements: {
-            minBatteryLevel: { type: Number, default: 0 }, // % pin tối thiểu
-            maxMileage: { type: Number }, // km tối đa
-            specialConditions: [String], // Điều kiện đặc biệt
-            safetyRequirements: [String], // Yêu cầu an toàn
-        },
 
         // Trạng thái
         status: {
@@ -103,24 +66,7 @@ const ServiceTypeSchema = new mongoose.Schema(
             default: "active",
         },
 
-        // Hình ảnh minh họa
-        images: [{
-            url: { type: String, required: true },
-            caption: { type: String },
-            isPrimary: { type: Boolean, default: false },
-        }],
-
-        // Thông tin AI
-        aiData: {
-            averageCompletionTime: { type: Number }, // Thời gian hoàn thành trung bình
-            successRate: { type: Number, min: 0, max: 100 }, // Tỷ lệ thành công
-            commonIssues: [String], // Vấn đề thường gặp
-            recommendations: [String], // Khuyến nghị
-        },
-
         // Metadata
-        tags: [String], // Tags để tìm kiếm
-        priority: { type: Number, default: 1 }, // Độ ưu tiên (1-5)
         isPopular: { type: Boolean, default: false }, // Dịch vụ phổ biến
     },
     {
