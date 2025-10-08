@@ -827,8 +827,8 @@ const workProgressTrackingService = {
               .populate("centerId", "name address")
               .populate("assignedAppointments");
 
-            if (updatedSched && updatedSched.assignedAppointments.length === 0) {
-              // no more appointments -> mark available
+            if (updatedSched) {
+              // mark available regardless of other appointments to ensure technicians are freed
               updatedSched.availability = "available";
               await updatedSched.save();
             }
