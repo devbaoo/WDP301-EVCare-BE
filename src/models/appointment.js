@@ -70,11 +70,6 @@ const AppointmentSchema = new mongoose.Schema(
     // Thông tin dịch vụ chi tiết
     serviceDetails: {
       description: { type: String }, // Mô tả vấn đề/dịch vụ cần làm
-      priority: {
-        type: String,
-        enum: ["low", "medium", "high", "urgent"],
-        default: "medium",
-      },
       estimatedCost: { type: Number }, // Chi phí ước tính
       actualCost: { type: Number }, // Chi phí thực tế
       notes: { type: String }, // Ghi chú thêm
