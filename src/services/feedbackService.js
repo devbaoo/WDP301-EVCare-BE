@@ -96,22 +96,26 @@ const getServiceCenterRatings = async (centerId) => {
 
         const pipeline = [
             { $match: { serviceCenter: Appointment.db.Types.ObjectId(centerId), "rating.overall": { $exists: true, $ne: null } } },
-            { $group: {
-                _id: "$serviceCenter",
-                count: { $sum: 1 },
-                avgOverall: { $avg: "$rating.overall" },
-                avgService: { $avg: "$rating.service" },
-                avgTechnician: { $avg: "$rating.technician" },
-                avgFacility: { $avg: "$rating.facility" }
-            }},
-            { $project: {
-                _id: 0,
-                count: 1,
-                avgOverall: { $round: ["$avgOverall", 2] },
-                avgService: { $round: ["$avgService", 2] },
-                avgTechnician: { $round: ["$avgTechnician", 2] },
-                avgFacility: { $round: ["$avgFacility", 2] }
-            }}
+            {
+                $group: {
+                    _id: "$serviceCenter",
+                    count: { $sum: 1 },
+                    avgOverall: { $avg: "$rating.overall" },
+                    avgService: { $avg: "$rating.service" },
+                    avgTechnician: { $avg: "$rating.technician" },
+                    avgFacility: { $avg: "$rating.facility" }
+                }
+            },
+            {
+                $project: {
+                    _id: 0,
+                    count: 1,
+                    avgOverall: { $round: ["$avgOverall", 2] },
+                    avgService: { $round: ["$avgService", 2] },
+                    avgTechnician: { $round: ["$avgTechnician", 2] },
+                    avgFacility: { $round: ["$avgFacility", 2] }
+                }
+            }
         ];
 
         const result = await Appointment.aggregate(pipeline);
