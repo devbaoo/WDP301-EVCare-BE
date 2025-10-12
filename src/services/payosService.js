@@ -768,7 +768,20 @@ const getCustomerPayments = async (customerId, filters = {}) => {
     sort[sortBy] = sortOrder === "desc" ? -1 : 1;
 
     const payments = await Payment.find(query)
-      .populate("appointment", "serviceType serviceCenter appointmentTime")
+      .populate({
+        path: "appointment",
+        select: "serviceType serviceCenter appointmentTime",
+        populate: [
+          {
+            path: "serviceCenter",
+            select: "name",
+          },
+          {
+            path: "serviceType",
+            select: "name",
+          },
+        ],
+      })
       .sort(sort)
       .limit(limit * 1)
       .skip((page - 1) * limit);
