@@ -134,8 +134,8 @@ const getAvailableSlots = async (serviceCenterId, serviceTypeId, date) => {
     // Get technicians for this service center
     let technicians = Array.isArray(serviceCenter.staff)
       ? serviceCenter.staff.filter(
-          (staff) => staff.role === "technician" && staff.isActive
-        )
+        (staff) => staff.role === "technician" && staff.isActive
+      )
       : [];
 
     // Fallback: hydrate from StaffAssignment if center.staff is empty or missing
@@ -822,19 +822,36 @@ const rescheduleBooking = async (bookingId, customerId, rescheduleData) => {
       };
     }
 
-    // Calculate new end time
-    const duration = appointment.serviceType.serviceDetails.duration;
+    // Validate newTime format HH:mm
+    if (!/^[0-2]?\d:[0-5]\d$/.test(newTime)) {
+      return {
+        success: false,
+        statusCode: 400,
+        message: "newTime phải có định dạng HH:mm",
+      };
+    }
+
+    // Determine duration (fallback to 60 minutes if not defined)
+    const duration =
+      appointment?.serviceType?.serviceDetails?.duration || 60;
+
+    // Parse start time
     const [startHour, startMin] = newTime.split(":").map(Number);
     const endMinutes = startHour * 60 + startMin + duration;
-    const endHour = Math.floor(endMinutes / 60);
+    const endHour = Math.floor(endMinutes / 60) % 24;
     const endMin = endMinutes % 60;
     const endTime = `${endHour.toString().padStart(2, "0")}:${endMin
       .toString()
       .padStart(2, "0")}`;
 
-    // Update appointment
+    // Capture old appointmentTime before modifying
+    const oldAppointmentTime = appointment.appointmentTime
+      ? { ...appointment.appointmentTime }
+      : null;
+
+    // Update appointment appointmentTime.date should be a Date object with same date as newAppointmentDate
     appointment.appointmentTime = {
-      date: newAppointmentDate,
+      date: new Date(newAppointmentDate.setHours(0, 0, 0, 0)),
       startTime: newTime,
       endTime: endTime,
       duration: duration,
@@ -842,9 +859,9 @@ const rescheduleBooking = async (bookingId, customerId, rescheduleData) => {
     appointment.status = "pending_confirmation"; // Reset to pending confirmation
     appointment.rescheduleHistory = appointment.rescheduleHistory || [];
     appointment.rescheduleHistory.push({
-      oldDate: appointment.appointmentTime.date,
-      oldTime: appointment.appointmentTime.startTime,
-      newDate: newAppointmentDate,
+      oldDate: oldAppointmentTime ? oldAppointmentTime.date : null,
+      oldTime: oldAppointmentTime ? oldAppointmentTime.startTime : null,
+      newDate: appointment.appointmentTime.date,
       newTime: newTime,
       rescheduledAt: new Date(),
       rescheduledBy: customerId,
