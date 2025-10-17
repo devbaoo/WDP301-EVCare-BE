@@ -91,12 +91,27 @@ class CronService {
                 }).limit(100);
 
                 for (const appt of toCancel) {
+                    // If appointment has a reservation, release it
+                    try {
+                        const reservationService = (await import("../services/inventoryReservationService.js")).default;
+                        const resId = appt.inspectionAndQuote?.reservationId;
+                        if (resId) {
+                            await reservationService.release(resId);
+                        }
+                    } catch (e) {
+                        console.error('Error releasing reservation on auto-cancel:', e);
+                    }
+
                     appt.status = 'cancelled';
                     appt.cancellation = appt.cancellation || {};
                     appt.cancellation.isCancelled = true;
                     appt.cancellation.cancelledAt = new Date();
                     appt.cancellation.reason = 'Auto-cancel: unpaid upfront timeout';
                     await appt.save();
+                    // Notify customer about cancellation (best-effort)
+                    try {
+                        await (await import('../services/emailService.js')).sendAppointmentCancelled(appt);
+                    } catch (e) { console.error('Send appointment cancelled email failed:', e); }
                 }
                 console.log(`Auto-cancelled ${toCancel.length} bookings`);
             } catch (error) {

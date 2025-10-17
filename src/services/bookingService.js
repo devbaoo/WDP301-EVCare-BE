@@ -6,6 +6,7 @@ import StaffAssignment from "../models/staffAssignment.js";
 import User from "../models/user.js";
 import emailService from "./emailService.js";
 import payosService from "./payosService.js";
+import inventoryService from "./inventoryService.js";
 
 // Lấy danh sách trung tâm dịch vụ có sẵn
 const getAvailableServiceCenters = async (filters = {}) => {
@@ -541,6 +542,44 @@ const createBooking = async (bookingData) => {
 
     await appointment.save();
 
+    // Auto-reserve parts (hold) when booking is created and service requires parts
+    try {
+      const { default: reservationService } = await import("./inventoryReservationService.js");
+      // Determine required parts from serviceType or booking payload (serviceDetails.requiredParts)
+      let requiredParts = [];
+      if (appointment.serviceDetails && Array.isArray(appointment.serviceDetails.requiredParts)) {
+        requiredParts = appointment.serviceDetails.requiredParts.map(p => ({ partId: p.partId, quantity: p.quantity }));
+      } else if (serviceType && Array.isArray(serviceType.requiredParts)) {
+        requiredParts = serviceType.requiredParts.map(p => ({ partId: p.partId, quantity: p.quantity }));
+      }
+
+      if (requiredParts.length > 0) {
+        // If payment required and online -> set short TTL to allow payment (30 minutes)
+        const settingsModule = await import("../models/systemSettings.js");
+        const SystemSettings = settingsModule.default || settingsModule;
+        const minutes = (await SystemSettings.getSettings())?.autoCancelUnpaidMinutes || 30;
+        const ttl = new Date(Date.now() + minutes * 60 * 1000);
+
+        const holdResult = await reservationService.hold({ appointmentId: appointment._id, serviceCenterId, items: requiredParts, expiresAt: ttl, notes: 'Auto-hold on booking creation' });
+        // If hold failed due to insufficient stock, attach note for customer but still allow booking
+        if (!holdResult.success) {
+          appointment.internalNotes = appointment.internalNotes || [];
+          appointment.internalNotes.push({ note: `Auto-hold failed: ${holdResult.message}`, addedAt: new Date(), addedBy: null, isVisibleToCustomer: false });
+          appointment.notes = (appointment.notes || '') + '\nLưu ý: một hoặc nhiều linh kiện hiện không đủ hàng. Chúng tôi sẽ liên hệ sớm.';
+          await appointment.save();
+        } else {
+          // attach reservation id to appointment for later use
+          appointment.inspectionAndQuote = appointment.inspectionAndQuote || {};
+          appointment.inspectionAndQuote.reservationId = holdResult.data._id;
+          await appointment.save();
+        }
+      }
+    } catch (e) {
+      // best-effort: do not fail booking on reservation errors
+      // eslint-disable-next-line no-console
+      console.error('Auto-hold on booking error:', e);
+    }
+
     // Update package usage if using package
     if (isFromPackage && servicePackage) {
       servicePackage.remainingServices = Math.max(
@@ -884,6 +923,11 @@ const rescheduleBooking = async (bookingId, customerId, rescheduleData) => {
       console.error("Send reschedule confirmation email error:", emailError);
       // Don't fail the reschedule if email fails
     }
+
+    // Also send a short notification (best-effort) via new helper if available
+    try {
+      await (await import('./emailService.js')).sendBookingConfirmed(appointment);
+    } catch (e) { /* best-effort */ }
 
     return {
       success: true,
@@ -1256,6 +1300,70 @@ const confirmBooking = async (bookingId, staffId) => {
         by: staffId,
         at: new Date(),
       });
+      // Inventory handling: try to reserve/consume required parts on staff confirm
+      try {
+        // Determine parts required for this appointment
+        const requiredParts = [];
+        // 1) If appointment has explicit serviceDetails.requiredParts (custom flow)
+        if (appointment.serviceDetails && Array.isArray(appointment.serviceDetails.requiredParts)) {
+          appointment.serviceDetails.requiredParts.forEach(p => {
+            if (p.partId && p.quantity > 0) requiredParts.push({ partId: p.partId, quantity: p.quantity });
+          });
+        }
+        // 2) Fallback: try to use serviceType.requiredParts (if the service type defines requiredParts)
+        if (requiredParts.length === 0 && appointment.serviceType) {
+          const svc = await ServiceType.findById(appointment.serviceType).lean();
+          if (svc && Array.isArray(svc.requiredParts)) {
+            svc.requiredParts.forEach(p => {
+              if (p.partId && p.quantity > 0) requiredParts.push({ partId: p.partId, quantity: p.quantity });
+            });
+          }
+        }
+
+        if (requiredParts.length > 0) {
+          // For each required part try to find CenterInventory for the appointment's center
+          const insufficient = [];
+          const toConsume = []; // will hold { inventoryId, quantity }
+          for (const rp of requiredParts) {
+            const inv = await (await import("../models/centerInventory.js")).default.findOne({ centerId: appointment.serviceCenter, partId: rp.partId });
+            const available = inv?.currentStock || 0;
+            if (!inv || available < rp.quantity) {
+              insufficient.push({ partId: rp.partId, required: rp.quantity, available });
+            } else {
+              toConsume.push({ inventoryId: inv._id, quantity: rp.quantity });
+            }
+          }
+
+          if (insufficient.length === 0) {
+            // All parts available — consume (create 'out' transactions)
+            for (const c of toConsume) {
+              // use system user (staffId) as performedBy
+              const tx = await inventoryService.createTransaction({ inventoryId: c.inventoryId, transactionType: 'out', quantity: c.quantity, referenceType: 'service', referenceId: appointment._id }, staffId);
+              if (!tx || !tx.success) {
+                // if any transaction fails, record as insufficient (rare) and break
+                insufficient.push({ inventoryId: c.inventoryId, message: tx?.message || 'Transaction failed' });
+                break;
+              }
+            }
+          }
+
+          if (insufficient.length > 0) {
+            // Add an internal note and customer-visible note about backorder/ETA
+            appointment.internalNotes = appointment.internalNotes || [];
+            appointment.internalNotes.push({ note: `Parts insufficient on confirm: ${JSON.stringify(insufficient)}. Customer notified of ETA 5-7 days.`, addedAt: new Date(), addedBy: staffId, isVisibleToCustomer: false });
+
+            appointment.notes = appointment.notes || '';
+            appointment.notes += '\nLưu ý: một số linh kiện hiện tại tạm hết. Dự kiến có hàng sau 5-7 ngày. Chúng tôi vẫn giữ lịch hẹn cho bạn.';
+            // Do not block confirmation — allow booking but mark warning
+          }
+        }
+      } catch (e) {
+        // best-effort: do not fail confirmation on inventory errors
+        // log and attach an internal note
+        console.error('Inventory handling on confirm error:', e);
+        appointment.internalNotes = appointment.internalNotes || [];
+        appointment.internalNotes.push({ note: `Inventory check error on confirm: ${e.message || e}`, addedAt: new Date(), addedBy: staffId, isVisibleToCustomer: false });
+      }
     } catch (_) { }
 
     appointment.status = "confirmed";
@@ -1268,6 +1376,13 @@ const confirmBooking = async (bookingId, staffId) => {
     // Staff confirm chỉ là xác nhận lịch hẹn, thanh toán chính sẽ ở cuối workflow
 
     await appointment.save();
+
+    // Send customer email (best-effort)
+    try {
+      await (await import('./emailService.js')).sendBookingConfirmed(appointment);
+    } catch (e) {
+      console.error('Send booking confirmed email failed:', e);
+    }
 
     return {
       success: true,
