@@ -17,6 +17,12 @@ const CenterInventorySchema = new mongoose.Schema({
         default: 0,
         min: 0
     },
+    reservedQuantity: {
+        type: Number,
+        required: true,
+        default: 0,
+        min: 0
+    },
     minStockLevel: {
         type: Number,
         required: true,

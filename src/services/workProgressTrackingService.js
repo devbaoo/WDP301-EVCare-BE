@@ -451,6 +451,10 @@ const workProgressTrackingService = {
             quotedAt: new Date(),
             quoteStatus: "pending",
           };
+          // Notify customer that quote is provided
+          try {
+            await (await import('./emailService.js')).sendQuoteProvided(appointment);
+          } catch (e) { console.error('Send quote provided email failed:', e); }
         } else {
           appointment.status = "inspection_completed";
           appointment.inspectionAndQuote = {
@@ -564,6 +568,8 @@ const workProgressTrackingService = {
             // eslint-disable-next-line no-console
             console.error("Auto reservation from quote error:", e);
           }
+          // Send customer email for quote approved (best-effort)
+          try { await (await import('./emailService.js')).sendQuoteApproved(appointment); } catch (e) { console.error('Send quote approved email failed:', e); }
         } else {
           try {
             appointment.statusHistory = appointment.statusHistory || [];
@@ -580,6 +586,10 @@ const workProgressTrackingService = {
             response.notes || "";
         }
         await appointment.save();
+        // Notify customer of quote rejection
+        if (response.status === 'rejected') {
+          try { await (await import('./emailService.js')).sendQuoteRejected(appointment); } catch (e) { console.error('Send quote rejected email failed:', e); }
+        }
       }
 
       const updatedRecord = await WorkProgressTracking.findByIdAndUpdate(
@@ -637,6 +647,8 @@ const workProgressTrackingService = {
         } catch (_) { }
         appointment.status = "maintenance_in_progress";
         await appointment.save();
+        // Notify customer maintenance started
+        try { await (await import('./emailService.js')).sendMaintenanceStarted(appointment); } catch (e) { console.error('Send maintenance started email failed:', e); }
       }
 
       const updatedRecord = await WorkProgressTracking.findByIdAndUpdate(
@@ -703,6 +715,8 @@ const workProgressTrackingService = {
           recommendations: maintenanceData.recommendations || "",
         };
         await appointment.save();
+        // Notify customer maintenance completed
+        try { await (await import('./emailService.js')).sendMaintenanceCompleted(appointment); } catch (e) { console.error('Send maintenance completed email failed:', e); }
 
         // Auto-create invoice (draft) and send via email (no PDF)
         try {
@@ -798,6 +812,8 @@ const workProgressTrackingService = {
           notes: paymentData.notes || "",
         };
         await appointment.save();
+        // Send payment receipt email
+        try { await (await import('./emailService.js')).sendPaymentReceipt(appointment); } catch (e) { console.error('Send payment receipt email failed:', e); }
       }
 
       const updatedRecord = await WorkProgressTracking.findByIdAndUpdate(

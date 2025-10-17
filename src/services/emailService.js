@@ -638,3 +638,296 @@ export default {
   sendPackageRenewalReminder,
   sendSimpleInvoiceEmail,
 };
+
+// Backorder notification
+export const sendBackorderNotification = async (appointment, items, etaDays = 7) => {
+  try {
+    const customer = appointment.customer;
+    const appointmentDate = new Date(appointment.appointmentTime.date).toLocaleDateString('vi-VN');
+    const appointmentTime = appointment.appointmentTime.startTime;
+
+    const itemListHtml = items.map(i => `<li>${i.partId || i.partName || 'Phụ tùng'} — Yêu cầu: ${i.required || i.quantity}, Có sẵn: ${i.available ?? '0'}</li>`).join('');
+
+    const emailContent = `
+      <div style="font-family: Arial, sans-serif; max-width: 600px; margin: 0 auto;">
+        <div style="padding: 20px; text-align: center; background: #f44336; color: white;">
+          <h2>Thông báo về linh kiện - EVCare</h2>
+        </div>
+        <div style="padding: 20px; background: #fff;">
+          <p>Xin chào ${customer.fullName || customer.username},</p>
+          <p>Về đặt lịch của bạn vào <strong>${appointmentDate} ${appointmentTime}</strong>, một số linh kiện cần thiết hiện tạm hết hàng hoặc không đủ số lượng.</p>
+          <p>Danh sách linh kiện:</p>
+          <ul>
+            ${itemListHtml}
+          </ul>
+          <p>Chúng tôi dự kiến có hàng trong <strong>${etaDays} ngày</strong>. Bạn vẫn có thể giữ lịch hẹn. Trung tâm sẽ liên hệ để xác nhận hoặc tư vấn phương án thay thế.</p>
+          <p>Xin cảm ơn,</p>
+          <p>Đội ngũ EVCare</p>
+        </div>
+      </div>
+    `;
+
+    const mailOptions = {
+      from: `"EVCare" <${process.env.EMAIL_USER}>`,
+      to: customer.email,
+      subject: `Thông báo linh kiện thiếu - Dự kiến có sau ${etaDays} ngày`,
+      html: emailContent,
+    };
+
+    await sendEmail(mailOptions);
+
+    return { success: true, message: 'Backorder email sent' };
+  } catch (error) {
+    console.error('Send backorder notification error:', error);
+    return { success: false, message: 'Failed to send backorder email', error: error.message };
+  }
+};
+
+// --- Additional status-change notifications ---
+export const sendBookingConfirmed = async (appointment) => {
+  try {
+    const customer = appointment.customer;
+    const appointmentDate = new Date(appointment.appointmentTime.date).toLocaleDateString('vi-VN');
+    const appointmentTime = appointment.appointmentTime.startTime;
+
+    const html = `
+      <div style="font-family: Arial, sans-serif; max-width:600px;margin:0 auto;">
+        <div style="background:#10b981;color:#fff;padding:20px;text-align:center;border-radius:6px 6px 0 0;">
+          <h2 style="margin:0;">EVCare - Lịch hẹn đã được xác nhận</h2>
+        </div>
+        <div style="padding:20px;background:#fff;">
+          <p>Xin chào ${customer.fullName || customer.username},</p>
+          <p>Lịch hẹn của bạn tại <strong>${appointment.serviceCenter?.name || ''}</strong> đã được xác nhận.</p>
+          <p><strong>Ngày:</strong> ${appointmentDate} &nbsp; <strong>Giờ:</strong> ${appointmentTime}</p>
+          <p>Nếu bạn cần thay đổi, vui lòng liên hệ trung tâm hoặc dùng chức năng dời lịch trong ứng dụng.</p>
+        </div>
+      </div>
+    `;
+
+    await sendEmail({
+      from: `"EVCare" <${process.env.EMAIL_USER}>`,
+      to: customer.email,
+      subject: `Lịch hẹn đã được xác nhận - ${appointmentDate} ${appointmentTime}`,
+      html,
+    });
+
+    return { success: true };
+  } catch (error) {
+    console.error('Send booking confirmed email error:', error);
+    return { success: false, error: error.message };
+  }
+};
+
+export const sendQuoteProvided = async (appointment) => {
+  try {
+    const customer = appointment.customer;
+    const quote = appointment.inspectionAndQuote || {};
+    const appointmentDate = new Date(appointment.appointmentTime.date).toLocaleDateString('vi-VN');
+
+    const itemsHtml = (quote.quoteDetails?.items || []).map(i => `<li>${i.name || i.partName || 'Item'} — ${i.quantity} x ${(i.unitPrice || 0).toLocaleString('vi-VN')}</li>`).join('');
+
+    const html = `
+      <div style="font-family: Arial, sans-serif; max-width:600px;margin:0 auto;">
+        <div style="background:#2563eb;color:#fff;padding:18px;text-align:center;border-radius:6px 6px 0 0;">
+          <h3 style="margin:0;">Báo giá của bạn đã sẵn sàng</h3>
+        </div>
+        <div style="padding:16px;background:#fff;">
+          <p>Xin chào ${customer.fullName || customer.username},</p>
+          <p>Kỹ thuật viên đã hoàn thành kiểm tra cho lịch hẹn <strong>${appointmentDate}</strong> và gửi báo giá cho bạn.</p>
+          <p><strong>Tổng dự kiến:</strong> ${quote.quoteAmount ? quote.quoteAmount.toLocaleString('vi-VN') : 0} VND</p>
+          ${itemsHtml ? `<p>Chi tiết:</p><ul>${itemsHtml}</ul>` : ''}
+          <p>Vui lòng kiểm tra và phản hồi để chúng tôi tiếp tục.</p>
+        </div>
+      </div>
+    `;
+
+    await sendEmail({
+      from: `"EVCare" <${process.env.EMAIL_USER}>`,
+      to: customer.email,
+      subject: `Báo giá cho lịch hẹn ${appointmentDate}`,
+      html,
+    });
+    return { success: true };
+  } catch (error) {
+    console.error('Send quote provided email error:', error);
+    return { success: false, error: error.message };
+  }
+};
+
+export const sendQuoteApproved = async (appointment) => {
+  try {
+    const customer = appointment.customer;
+    const appointmentDate = new Date(appointment.appointmentTime.date).toLocaleDateString('vi-VN');
+    const html = `
+      <div style="font-family: Arial, sans-serif; max-width:600px;margin:0 auto;">
+        <div style="background:#059669;color:#fff;padding:18px;text-align:center;border-radius:6px 6px 0 0;">
+          <h3 style="margin:0;">Báo giá đã được duyệt</h3>
+        </div>
+        <div style="padding:16px;background:#fff;">
+          <p>Xin chào ${customer.fullName || customer.username},</p>
+          <p>Cảm ơn bạn đã chấp nhận báo giá cho lịch hẹn <strong>${appointmentDate}</strong>. Chúng tôi sẽ chuẩn bị và tiến hành bảo dưỡng theo kế hoạch.</p>
+        </div>
+      </div>
+    `;
+
+    await sendEmail({
+      from: `"EVCare" <${process.env.EMAIL_USER}>`,
+      to: customer.email,
+      subject: `Báo giá đã được duyệt - ${appointmentDate}`,
+      html,
+    });
+    return { success: true };
+  } catch (error) {
+    console.error('Send quote approved email error:', error);
+    return { success: false, error: error.message };
+  }
+};
+
+export const sendQuoteRejected = async (appointment) => {
+  try {
+    const customer = appointment.customer;
+    const appointmentDate = new Date(appointment.appointmentTime.date).toLocaleDateString('vi-VN');
+    const html = `
+      <div style="font-family: Arial, sans-serif; max-width:600px;margin:0 auto;">
+        <div style="background:#ef4444;color:#fff;padding:18px;text-align:center;border-radius:6px 6px 0 0;">
+          <h3 style="margin:0;">Báo giá đã bị từ chối</h3>
+        </div>
+        <div style="padding:16px;background:#fff;">
+          <p>Xin chào ${customer.fullName || customer.username},</p>
+          <p>Chúng tôi đã ghi nhận việc bạn từ chối báo giá cho lịch hẹn <strong>${appointmentDate}</strong>. Nếu bạn cần thảo luận thêm hoặc muốn báo giá lại, hãy liên hệ trung tâm.</p>
+        </div>
+      </div>
+    `;
+
+    await sendEmail({
+      from: `"EVCare" <${process.env.EMAIL_USER}>`,
+      to: customer.email,
+      subject: `Báo giá đã bị từ chối - ${appointmentDate}`,
+      html,
+    });
+    return { success: true };
+  } catch (error) {
+    console.error('Send quote rejected email error:', error);
+    return { success: false, error: error.message };
+  }
+};
+
+export const sendMaintenanceStarted = async (appointment) => {
+  try {
+    const customer = appointment.customer;
+    const appointmentDate = new Date(appointment.appointmentTime.date).toLocaleDateString('vi-VN');
+    const html = `
+      <div style="font-family: Arial, sans-serif; max-width:600px;margin:0 auto;">
+        <div style="background:#0284c7;color:#fff;padding:18px;text-align:center;border-radius:6px 6px 0 0;">
+          <h3 style="margin:0;">Bắt đầu bảo dưỡng</h3>
+        </div>
+        <div style="padding:16px;background:#fff;">
+          <p>Xin chào ${customer.fullName || customer.username},</p>
+          <p>Kỹ thuật viên đã bắt đầu thực hiện công việc cho lịch hẹn <strong>${appointmentDate}</strong>.</p>
+        </div>
+      </div>
+    `;
+
+    await sendEmail({
+      from: `"EVCare" <${process.env.EMAIL_USER}>`,
+      to: customer.email,
+      subject: `Bắt đầu bảo dưỡng - ${appointmentDate}`,
+      html,
+    });
+    return { success: true };
+  } catch (error) {
+    console.error('Send maintenance started email error:', error);
+    return { success: false, error: error.message };
+  }
+};
+
+export const sendMaintenanceCompleted = async (appointment) => {
+  try {
+    const customer = appointment.customer;
+    const appointmentDate = new Date(appointment.appointmentTime.date).toLocaleDateString('vi-VN');
+    const html = `
+      <div style="font-family: Arial, sans-serif; max-width:600px;margin:0 auto;">
+        <div style="background:#15803d;color:#fff;padding:18px;text-align:center;border-radius:6px 6px 0 0;">
+          <h3 style="margin:0;">Bảo dưỡng đã hoàn tất</h3>
+        </div>
+        <div style="padding:16px;background:#fff;">
+          <p>Xin chào ${customer.fullName || customer.username},</p>
+          <p>Công việc cho lịch hẹn <strong>${appointmentDate}</strong> đã hoàn tất. Hóa đơn sẽ được gửi tới email của bạn.</p>
+        </div>
+      </div>
+    `;
+
+    await sendEmail({
+      from: `"EVCare" <${process.env.EMAIL_USER}>`,
+      to: customer.email,
+      subject: `Bảo dưỡng hoàn tất - ${appointmentDate}`,
+      html,
+    });
+    return { success: true };
+  } catch (error) {
+    console.error('Send maintenance completed email error:', error);
+    return { success: false, error: error.message };
+  }
+};
+
+export const sendAppointmentCancelled = async (appointment) => {
+  try {
+    const customer = appointment.customer;
+    const appointmentDate = appointment?.appointmentTime?.date ? new Date(appointment.appointmentTime.date).toLocaleDateString('vi-VN') : '';
+    const reason = appointment.cancellation?.reason || 'Không rõ lý do';
+    const html = `
+      <div style="font-family: Arial, sans-serif; max-width:600px;margin:0 auto;">
+        <div style="background:#6b7280;color:#fff;padding:18px;text-align:center;border-radius:6px 6px 0 0;">
+          <h3 style="margin:0;">Lịch hẹn đã bị hủy</h3>
+        </div>
+        <div style="padding:16px;background:#fff;">
+          <p>Xin chào ${customer.fullName || customer.username},</p>
+          <p>Lịch hẹn vào <strong>${appointmentDate}</strong> đã bị hủy.</p>
+          <p><strong>Lý do:</strong> ${reason}</p>
+        </div>
+      </div>
+    `;
+
+    await sendEmail({
+      from: `"EVCare" <${process.env.EMAIL_USER}>`,
+      to: customer.email,
+      subject: `Lịch hẹn bị hủy - ${appointmentDate}`,
+      html,
+    });
+    return { success: true };
+  } catch (error) {
+    console.error('Send appointment cancelled email error:', error);
+    return { success: false, error: error.message };
+  }
+};
+
+export const sendPaymentReceipt = async (appointment) => {
+  try {
+    const customer = appointment.customer;
+    const appointmentDate = new Date(appointment.appointmentTime.date).toLocaleDateString('vi-VN');
+    const amount = appointment.payment?.amount || 0;
+    const html = `
+      <div style="font-family: Arial, sans-serif; max-width:600px;margin:0 auto;">
+        <div style="background:#794af0;color:#fff;padding:18px;text-align:center;border-radius:6px 6px 0 0;">
+          <h3 style="margin:0;">Xác nhận thanh toán</h3>
+        </div>
+        <div style="padding:16px;background:#fff;">
+          <p>Xin chào ${customer.fullName || customer.username},</p>
+          <p>Chúng tôi đã ghi nhận thanh toán ₫${amount.toLocaleString('vi-VN')} cho lịch hẹn <strong>${appointmentDate}</strong>.</p>
+          <p>Cảm ơn bạn đã sử dụng dịch vụ EVCare.</p>
+        </div>
+      </div>
+    `;
+
+    await sendEmail({
+      from: `"EVCare" <${process.env.EMAIL_USER}>`,
+      to: customer.email,
+      subject: `Xác nhận thanh toán - ${appointmentDate}`,
+      html,
+    });
+    return { success: true };
+  } catch (error) {
+    console.error('Send payment receipt email error:', error);
+    return { success: false, error: error.message };
+  }
+};
