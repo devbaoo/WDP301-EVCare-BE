@@ -772,43 +772,62 @@ const getCustomerBookings = async (customerId, filters = {}) => {
 };
 
 // Hủy booking
-const cancelBooking = async (bookingId, customerId, reason) => {
+const cancelBooking = async (bookingId, actingUser, reason) => {
   try {
-    const appointment = await Appointment.findOne({
-      _id: bookingId,
-      customer: customerId,
-    });
+    // actingUser: { id, role }
+    const appointment = await Appointment.findById(bookingId).populate('customer');
 
     if (!appointment) {
-      return {
-        success: false,
-        statusCode: 404,
-        message: "Không tìm thấy booking",
-      };
+      return { success: false, statusCode: 404, message: 'Không tìm thấy booking' };
     }
 
-    if (appointment.status === "completed") {
-      return {
-        success: false,
-        statusCode: 400,
-        message: "Không thể hủy booking đã hoàn thành",
-      };
+    // Authorization: customer can cancel their own booking; staff/technician/admin can cancel for center
+    if (actingUser.role === 'customer') {
+      if (appointment.customer.toString() !== actingUser.id.toString()) {
+        return { success: false, statusCode: 403, message: 'Bạn không có quyền hủy booking này' };
+      }
+    } else if (!['admin', 'staff', 'technician', 'manager'].includes(actingUser.role)) {
+      return { success: false, statusCode: 403, message: 'Bạn không có quyền hủy booking' };
     }
 
-    await appointment.cancel(customerId, reason);
+    if (appointment.status === 'completed') {
+      return { success: false, statusCode: 400, message: 'Không thể hủy booking đã hoàn thành' };
+    }
 
-    return {
-      success: true,
-      statusCode: 200,
-      message: "Hủy booking thành công",
-    };
+    // If there is a reservation, release it (best-effort)
+    try {
+      const reservationService = (await import('./inventoryReservationService.js')).default;
+      const resId = appointment.inspectionAndQuote?.reservationId;
+      if (resId) {
+        await reservationService.release(resId);
+      }
+    } catch (e) {
+      console.error('Error releasing reservation on cancel:', e);
+    }
+
+    // record cancellation meta
+    appointment.cancellation = appointment.cancellation || {};
+    appointment.cancellation.isCancelled = true;
+    appointment.cancellation.cancelledAt = new Date();
+    appointment.cancellation.cancelledBy = actingUser.id;
+    appointment.cancellation.reason = reason || appointment.cancellation.reason || 'N/A';
+    appointment.status = 'cancelled';
+
+    await appointment.save();
+
+    // Notify customer if cancel initiated by staff/tech/admin
+    try {
+      if (actingUser.role !== 'customer') {
+        await (await import('./emailService.js')).sendAppointmentCancelled(appointment);
+      }
+    } catch (e) {
+      console.error('Send appointment cancelled email failed:', e);
+    }
+
+    return { success: true, statusCode: 200, message: 'Hủy booking thành công' };
   } catch (error) {
-    console.error("Cancel booking error:", error);
-    return {
-      success: false,
-      statusCode: 500,
-      message: "Lỗi khi hủy booking",
-    };
+    console.error('Cancel booking error:', error);
+    return { success: false, statusCode: 500, message: 'Lỗi khi hủy booking' };
   }
 };
 

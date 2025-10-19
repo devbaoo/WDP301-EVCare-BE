@@ -219,10 +219,10 @@ const getCustomerBookings = async (req, res) => {
 const cancelBooking = async (req, res) => {
     try {
         const { bookingId } = req.params;
-        const customerId = req.user.id;
+        const actingUser = { id: req.user.id, role: req.user.role };
         const { reason } = req.body;
 
-        const result = await bookingService.cancelBooking(bookingId, customerId, reason);
+        const result = await bookingService.cancelBooking(bookingId, actingUser, reason);
 
         return res.status(result.statusCode).json({
             success: result.success,
