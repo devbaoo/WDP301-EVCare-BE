@@ -4,11 +4,12 @@ import User from "../models/user.js";
 import Appointment from "../models/appointment.js";
 import ServiceRecord from "../models/serviceRecord.js";
 import TechnicianSchedule from "../models/technicianSchedule.js";
+import CenterInventory from "../models/centerInventory.js";
 import invoiceService from "./invoiceService.js";
 
 // Helper function to calculate total amount from quoteDetails
 const calculateQuoteAmount = (quoteDetails) => {
-  if (typeof quoteDetails !== 'object' || !quoteDetails) {
+  if (typeof quoteDetails !== "object" || !quoteDetails) {
     return 0;
   }
 
@@ -99,23 +100,34 @@ const workProgressTrackingService = {
       }
 
       // Check if appointment exists and get service type requirements
-      const appointment = await Appointment.findById(progressData.appointmentId)
-        .populate('serviceType', 'serviceDetails.minTechnicians serviceDetails.maxTechnicians name');
+      const appointment = await Appointment.findById(
+        progressData.appointmentId
+      ).populate(
+        "serviceType",
+        "serviceDetails.minTechnicians serviceDetails.maxTechnicians name"
+      );
       if (!appointment) {
         throw new Error("Appointment not found");
       }
 
       // Validate technician team size against service requirements
-      const totalTechnicians = 1 + (progressData.technicians ? progressData.technicians.length : 0);
-      const minRequired = appointment.serviceType?.serviceDetails?.minTechnicians || 1;
-      const maxAllowed = appointment.serviceType?.serviceDetails?.maxTechnicians || 1;
+      const totalTechnicians =
+        1 + (progressData.technicians ? progressData.technicians.length : 0);
+      const minRequired =
+        appointment.serviceType?.serviceDetails?.minTechnicians || 1;
+      const maxAllowed =
+        appointment.serviceType?.serviceDetails?.maxTechnicians || 1;
 
       if (totalTechnicians < minRequired) {
-        throw new Error(`Service "${appointment.serviceType?.name}" requires at least ${minRequired} technician(s). Currently assigned: ${totalTechnicians}`);
+        throw new Error(
+          `Service "${appointment.serviceType?.name}" requires at least ${minRequired} technician(s). Currently assigned: ${totalTechnicians}`
+        );
       }
 
       if (totalTechnicians > maxAllowed) {
-        throw new Error(`Service "${appointment.serviceType?.name}" allows maximum ${maxAllowed} technician(s). Currently assigned: ${totalTechnicians}`);
+        throw new Error(
+          `Service "${appointment.serviceType?.name}" allows maximum ${maxAllowed} technician(s). Currently assigned: ${totalTechnicians}`
+        );
       }
 
       // Validate additional technicians exist
@@ -123,10 +135,17 @@ const workProgressTrackingService = {
         for (const tech of progressData.technicians) {
           const techExists = await User.findById(tech.technicianId);
           if (!techExists) {
-            throw new Error(`Technician with ID ${tech.technicianId} not found`);
+            throw new Error(
+              `Technician with ID ${tech.technicianId} not found`
+            );
           }
-          if (tech.technicianId.toString() === progressData.technicianId.toString()) {
-            throw new Error("Primary technician cannot be in additional technicians list");
+          if (
+            tech.technicianId.toString() ===
+            progressData.technicianId.toString()
+          ) {
+            throw new Error(
+              "Primary technician cannot be in additional technicians list"
+            );
           }
         }
       }
@@ -339,7 +358,7 @@ const workProgressTrackingService = {
             updatedRecord.technicianId._id || updatedRecord.technicianId,
             updatedRecord.appointmentId._id || updatedRecord.appointmentId
           );
-        } catch (_) { }
+        } catch (_) {}
       }
 
       return updatedRecord;
@@ -378,27 +397,39 @@ const workProgressTrackingService = {
       // Validate quoteDetails structure if provided
       if (inspectionData.quoteDetails) {
         // Support both string (legacy) and object (new) format
-        if (typeof inspectionData.quoteDetails === 'object') {
+        if (typeof inspectionData.quoteDetails === "object") {
           const { items } = inspectionData.quoteDetails;
 
           // Validate items if provided
           if (items && Array.isArray(items)) {
             for (const item of items) {
-              if (!item.name || typeof item.quantity !== 'number' || typeof item.unitPrice !== 'number') {
-                throw new Error("Each item must have name, quantity, and unitPrice");
+              if (
+                !item.name ||
+                typeof item.quantity !== "number" ||
+                typeof item.unitPrice !== "number"
+              ) {
+                throw new Error(
+                  "Each item must have name, quantity, and unitPrice"
+                );
               }
               if (item.quantity <= 0 || item.unitPrice < 0) {
-                throw new Error("Item quantity must be positive and unitPrice cannot be negative");
+                throw new Error(
+                  "Item quantity must be positive and unitPrice cannot be negative"
+                );
               }
             }
           }
 
           // Auto-calculate quote amount from items (always override any provided quoteAmount)
-          const calculatedAmount = calculateQuoteAmount(inspectionData.quoteDetails);
+          const calculatedAmount = calculateQuoteAmount(
+            inspectionData.quoteDetails
+          );
           if (calculatedAmount > 0) {
             inspectionData.quoteAmount = calculatedAmount;
           } else {
-            throw new Error("Quote must have at least one item with valid quantity and price");
+            throw new Error(
+              "Quote must have at least one item with valid quantity and price"
+            );
           }
         }
       }
@@ -423,6 +454,55 @@ const workProgressTrackingService = {
         updateData["quote.quoteDetails"] = inspectionData.quoteDetails;
         updateData["quote.quotedAt"] = new Date();
         updateData["quote.quoteStatus"] = "pending";
+
+        // Automatically deduct parts from inventory when adding to quote
+        try {
+          if (
+            typeof inspectionData.quoteDetails === "object" &&
+            Array.isArray(inspectionData.quoteDetails.items) &&
+            inspectionData.quoteDetails.items.length > 0
+          ) {
+            // Get the service center ID from the appointment
+            const appointment = await Appointment.findById(
+              progressRecord.appointmentId
+            );
+            if (appointment && appointment.serviceCenter) {
+              const serviceCenterId = appointment.serviceCenter;
+
+              // Process each part in the quote
+              for (const item of inspectionData.quoteDetails.items) {
+                if (item.partId && item.quantity > 0) {
+                  // Find the inventory item for this part in this service center
+                  const inventoryItem = await CenterInventory.findOne({
+                    centerId: serviceCenterId,
+                    partId: item.partId,
+                  });
+
+                  if (inventoryItem) {
+                    // Create a transaction to deduct the inventory
+                    const { default: inventoryService } = await import(
+                      "./inventoryService.js"
+                    );
+                    await inventoryService.createTransaction(
+                      {
+                        inventoryId: inventoryItem._id,
+                        transactionType: "out",
+                        quantity: item.quantity,
+                        referenceType: "quote",
+                        referenceId: progressRecord._id,
+                        notes: `Auto-deducted for inspection quote #${progressRecord._id}`,
+                      },
+                      progressRecord.technicianId
+                    ); // Use technician as the user who performed the transaction
+                  }
+                }
+              }
+            }
+          }
+        } catch (e) {
+          console.error("Error deducting inventory for quote items:", e);
+          // Don't throw error to avoid blocking the quote submission process
+        }
       }
 
       // Update the appointment status
@@ -438,7 +518,7 @@ const workProgressTrackingService = {
             to: "inspection_completed",
             at: new Date(),
           });
-        } catch (_) { }
+        } catch (_) {}
         if (updateData.currentStatus === "quote_provided") {
           appointment.status = "quote_provided";
           appointment.inspectionAndQuote = {
@@ -453,8 +533,12 @@ const workProgressTrackingService = {
           };
           // Notify customer that quote is provided
           try {
-            await (await import('./emailService.js')).sendQuoteProvided(appointment);
-          } catch (e) { console.error('Send quote provided email failed:', e); }
+            await (
+              await import("./emailService.js")
+            ).sendQuoteProvided(appointment);
+          } catch (e) {
+            console.error("Send quote provided email failed:", e);
+          }
         } else {
           appointment.status = "inspection_completed";
           appointment.inspectionAndQuote = {
@@ -534,7 +618,7 @@ const workProgressTrackingService = {
               to: "quote_approved",
               at: new Date(),
             });
-          } catch (_) { }
+          } catch (_) {}
           appointment.status = "quote_approved";
           appointment.inspectionAndQuote.quoteStatus = "approved";
           appointment.inspectionAndQuote.customerResponseAt = new Date();
@@ -569,7 +653,13 @@ const workProgressTrackingService = {
             console.error("Auto reservation from quote error:", e);
           }
           // Send customer email for quote approved (best-effort)
-          try { await (await import('./emailService.js')).sendQuoteApproved(appointment); } catch (e) { console.error('Send quote approved email failed:', e); }
+          try {
+            await (
+              await import("./emailService.js")
+            ).sendQuoteApproved(appointment);
+          } catch (e) {
+            console.error("Send quote approved email failed:", e);
+          }
         } else {
           try {
             appointment.statusHistory = appointment.statusHistory || [];
@@ -578,7 +668,7 @@ const workProgressTrackingService = {
               to: "quote_rejected",
               at: new Date(),
             });
-          } catch (_) { }
+          } catch (_) {}
           appointment.status = "quote_rejected";
           appointment.inspectionAndQuote.quoteStatus = "rejected";
           appointment.inspectionAndQuote.customerResponseAt = new Date();
@@ -587,8 +677,14 @@ const workProgressTrackingService = {
         }
         await appointment.save();
         // Notify customer of quote rejection
-        if (response.status === 'rejected') {
-          try { await (await import('./emailService.js')).sendQuoteRejected(appointment); } catch (e) { console.error('Send quote rejected email failed:', e); }
+        if (response.status === "rejected") {
+          try {
+            await (
+              await import("./emailService.js")
+            ).sendQuoteRejected(appointment);
+          } catch (e) {
+            console.error("Send quote rejected email failed:", e);
+          }
         }
       }
 
@@ -644,11 +740,17 @@ const workProgressTrackingService = {
             to: "maintenance_in_progress",
             at: new Date(),
           });
-        } catch (_) { }
+        } catch (_) {}
         appointment.status = "maintenance_in_progress";
         await appointment.save();
         // Notify customer maintenance started
-        try { await (await import('./emailService.js')).sendMaintenanceStarted(appointment); } catch (e) { console.error('Send maintenance started email failed:', e); }
+        try {
+          await (
+            await import("./emailService.js")
+          ).sendMaintenanceStarted(appointment);
+        } catch (e) {
+          console.error("Send maintenance started email failed:", e);
+        }
       }
 
       const updatedRecord = await WorkProgressTracking.findByIdAndUpdate(
@@ -705,7 +807,7 @@ const workProgressTrackingService = {
             to: "maintenance_completed",
             at: new Date(),
           });
-        } catch (_) { }
+        } catch (_) {}
         appointment.status = "maintenance_completed";
         appointment.completion = {
           isCompleted: true,
@@ -716,7 +818,13 @@ const workProgressTrackingService = {
         };
         await appointment.save();
         // Notify customer maintenance completed
-        try { await (await import('./emailService.js')).sendMaintenanceCompleted(appointment); } catch (e) { console.error('Send maintenance completed email failed:', e); }
+        try {
+          await (
+            await import("./emailService.js")
+          ).sendMaintenanceCompleted(appointment);
+        } catch (e) {
+          console.error("Send maintenance completed email failed:", e);
+        }
 
         // Auto-create invoice (draft) and send via email (no PDF)
         try {
@@ -750,7 +858,7 @@ const workProgressTrackingService = {
             updatedRecord.technicianId._id || updatedRecord.technicianId,
             updatedRecord.appointmentId._id || updatedRecord.appointmentId
           );
-        } catch (_) { }
+        } catch (_) {}
       }
 
       return updatedRecord;
@@ -813,7 +921,13 @@ const workProgressTrackingService = {
         };
         await appointment.save();
         // Send payment receipt email
-        try { await (await import('./emailService.js')).sendPaymentReceipt(appointment); } catch (e) { console.error('Send payment receipt email failed:', e); }
+        try {
+          await (
+            await import("./emailService.js")
+          ).sendPaymentReceipt(appointment);
+        } catch (e) {
+          console.error("Send payment receipt email failed:", e);
+        }
       }
 
       const updatedRecord = await WorkProgressTracking.findByIdAndUpdate(
@@ -1330,13 +1444,13 @@ const workProgressTrackingService = {
       }
 
       const progressRecord = await WorkProgressTracking.findById(progressId)
-        .populate('appointmentId')
+        .populate("appointmentId")
         .populate({
-          path: 'appointmentId',
+          path: "appointmentId",
           populate: {
-            path: 'serviceType',
-            select: 'serviceDetails.maxTechnicians name'
-          }
+            path: "serviceType",
+            select: "serviceDetails.maxTechnicians name",
+          },
         });
 
       if (!progressRecord) {
@@ -1350,9 +1464,14 @@ const workProgressTrackingService = {
       }
 
       // Check if already assigned
-      const isAlreadyAssigned = progressRecord.technicians.some(
-        tech => tech.technicianId.toString() === technicianData.technicianId.toString()
-      ) || progressRecord.technicianId.toString() === technicianData.technicianId.toString();
+      const isAlreadyAssigned =
+        progressRecord.technicians.some(
+          (tech) =>
+            tech.technicianId.toString() ===
+            technicianData.technicianId.toString()
+        ) ||
+        progressRecord.technicianId.toString() ===
+          technicianData.technicianId.toString();
 
       if (isAlreadyAssigned) {
         throw new Error("Technician is already assigned to this work progress");
@@ -1360,10 +1479,14 @@ const workProgressTrackingService = {
 
       // Check maximum technicians limit
       const currentTechCount = 1 + progressRecord.technicians.length; // +1 for primary technician
-      const maxAllowed = progressRecord.appointmentId?.serviceType?.serviceDetails?.maxTechnicians || 1;
+      const maxAllowed =
+        progressRecord.appointmentId?.serviceType?.serviceDetails
+          ?.maxTechnicians || 1;
 
       if (currentTechCount >= maxAllowed) {
-        throw new Error(`Maximum ${maxAllowed} technicians allowed for service "${progressRecord.appointmentId?.serviceType?.name}"`);
+        throw new Error(
+          `Maximum ${maxAllowed} technicians allowed for service "${progressRecord.appointmentId?.serviceType?.name}"`
+        );
       }
 
       // Add technician
@@ -1371,14 +1494,17 @@ const workProgressTrackingService = {
         technicianId: technicianData.technicianId,
         role: technicianData.role || "assistant",
         assignedAt: new Date(),
-        isActive: true
+        isActive: true,
       });
 
       await progressRecord.save();
 
       return await WorkProgressTracking.findById(progressId)
         .populate("technicianId", "firstName lastName email phoneNumber")
-        .populate("technicians.technicianId", "firstName lastName email phoneNumber")
+        .populate(
+          "technicians.technicianId",
+          "firstName lastName email phoneNumber"
+        )
         .populate("appointmentId")
         .populate("serviceRecordId");
     } catch (error) {
@@ -1394,13 +1520,13 @@ const workProgressTrackingService = {
       }
 
       const progressRecord = await WorkProgressTracking.findById(progressId)
-        .populate('appointmentId')
+        .populate("appointmentId")
         .populate({
-          path: 'appointmentId',
+          path: "appointmentId",
           populate: {
-            path: 'serviceType',
-            select: 'serviceDetails.minTechnicians name'
-          }
+            path: "serviceType",
+            select: "serviceDetails.minTechnicians name",
+          },
         });
 
       if (!progressRecord) {
@@ -1409,31 +1535,43 @@ const workProgressTrackingService = {
 
       // Cannot remove primary technician
       if (progressRecord.technicianId.toString() === technicianId.toString()) {
-        throw new Error("Cannot remove primary technician. Reassign primary technician first.");
+        throw new Error(
+          "Cannot remove primary technician. Reassign primary technician first."
+        );
       }
 
       // Check minimum technicians requirement
-      const currentTechCount = 1 + progressRecord.technicians.filter(t => t.isActive).length;
-      const minRequired = progressRecord.appointmentId?.serviceType?.serviceDetails?.minTechnicians || 1;
+      const currentTechCount =
+        1 + progressRecord.technicians.filter((t) => t.isActive).length;
+      const minRequired =
+        progressRecord.appointmentId?.serviceType?.serviceDetails
+          ?.minTechnicians || 1;
 
       if (currentTechCount - 1 < minRequired) {
-        throw new Error(`Minimum ${minRequired} technicians required for service "${progressRecord.appointmentId?.serviceType?.name}"`);
+        throw new Error(
+          `Minimum ${minRequired} technicians required for service "${progressRecord.appointmentId?.serviceType?.name}"`
+        );
       }
 
       // Remove technician
       progressRecord.technicians = progressRecord.technicians.filter(
-        tech => tech.technicianId.toString() !== technicianId.toString()
+        (tech) => tech.technicianId.toString() !== technicianId.toString()
       );
 
       await progressRecord.save();
 
       return await WorkProgressTracking.findById(progressId)
         .populate("technicianId", "firstName lastName email phoneNumber")
-        .populate("technicians.technicianId", "firstName lastName email phoneNumber")
+        .populate(
+          "technicians.technicianId",
+          "firstName lastName email phoneNumber"
+        )
         .populate("appointmentId")
         .populate("serviceRecordId");
     } catch (error) {
-      throw new Error(`Error removing technician from progress: ${error.message}`);
+      throw new Error(
+        `Error removing technician from progress: ${error.message}`
+      );
     }
   },
 };
