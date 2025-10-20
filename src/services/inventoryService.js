@@ -250,7 +250,21 @@ const inventoryService = {
       const query = {};
 
       // Apply filters if provided
-      if (filters.inventoryId) query.inventoryId = filters.inventoryId;
+      if (filters.inventoryId) {
+        // Validate if inventoryId is a valid ObjectId before using it
+        if (mongoose.Types.ObjectId.isValid(filters.inventoryId)) {
+          query.inventoryId = filters.inventoryId;
+        } else {
+          // If not a valid ObjectId, return empty result to avoid errors
+          return {
+            success: true,
+            statusCode: 200,
+            data: [],
+            message: "No transactions found for invalid inventory ID",
+          };
+        }
+      }
+
       if (filters.transactionType)
         query.transactionType = filters.transactionType;
       if (filters.referenceType) query.referenceType = filters.referenceType;
