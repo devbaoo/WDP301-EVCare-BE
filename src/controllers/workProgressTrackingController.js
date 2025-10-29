@@ -248,6 +248,34 @@ const workProgressTrackingController = {
     }
   },
 
+  // Get appointment quote details for customer to view
+  getAppointmentQuote: async (req, res) => {
+    try {
+      const { appointmentId } = req.params;
+
+      const result = await workProgressTrackingService.getAppointmentQuote(
+        appointmentId
+      );
+
+      if (!result || !result.quote) {
+        return res.status(404).json({
+          success: false,
+          message: "No quote found for this appointment",
+        });
+      }
+
+      return res.status(200).json({
+        success: true,
+        data: result,
+      });
+    } catch (error) {
+      return res.status(500).json({
+        success: false,
+        message: error.message || "Failed to fetch appointment quote",
+      });
+    }
+  },
+
   // Update progress status
   updateProgressStatus: async (req, res) => {
     try {
@@ -309,7 +337,11 @@ const workProgressTrackingController = {
       }
 
       // Additional validation for new quoteDetails object format
-      if (quoteDetails && typeof quoteDetails === 'object' && !Array.isArray(quoteDetails)) {
+      if (
+        quoteDetails &&
+        typeof quoteDetails === "object" &&
+        !Array.isArray(quoteDetails)
+      ) {
         const { items } = quoteDetails;
 
         // Validate items structure
@@ -323,10 +355,16 @@ const workProgressTrackingController = {
         if (items && items.length > 0) {
           for (let i = 0; i < items.length; i++) {
             const item = items[i];
-            if (!item.name || typeof item.quantity !== 'number' || typeof item.unitPrice !== 'number') {
+            if (
+              !item.name ||
+              typeof item.quantity !== "number" ||
+              typeof item.unitPrice !== "number"
+            ) {
               return res.status(400).json({
                 success: false,
-                message: `Item ${i + 1}: name, quantity, and unitPrice are required`,
+                message: `Item ${
+                  i + 1
+                }: name, quantity, and unitPrice are required`,
               });
             }
             if (item.quantity <= 0) {
@@ -367,6 +405,115 @@ const workProgressTrackingController = {
       res.status(500).json({
         success: false,
         message: error.message || "Failed to submit inspection and quote",
+      });
+    }
+  },
+
+  // Submit inspection and quote by appointment (before progress exists)
+  submitInspectionAndQuoteByAppointment: async (req, res) => {
+    try {
+      const { appointmentId } = req.params;
+      const {
+        vehicleCondition,
+        diagnosisDetails,
+        inspectionNotes,
+        quoteDetails,
+      } = req.body;
+
+      if (!vehicleCondition || !diagnosisDetails) {
+        return res.status(400).json({
+          success: false,
+          message: "Vehicle condition and diagnosis details are required",
+        });
+      }
+
+      if (!quoteDetails) {
+        return res.status(400).json({
+          success: false,
+          message: "Quote details with items are required",
+        });
+      }
+
+      // Basic structure validation for new object format
+      if (
+        quoteDetails &&
+        typeof quoteDetails === "object" &&
+        !Array.isArray(quoteDetails)
+      ) {
+        const { items } = quoteDetails;
+        if (!Array.isArray(items) || items.length === 0) {
+          return res.status(400).json({
+            success: false,
+            message: "Quote must have at least one item",
+          });
+        }
+      }
+
+      const actorUserId = req.user?.id || req.user?._id;
+
+      const updatedAppointment =
+        await workProgressTrackingService.submitAppointmentInspectionAndQuote(
+          appointmentId,
+          {
+            vehicleCondition,
+            diagnosisDetails,
+            inspectionNotes,
+            quoteDetails,
+          },
+          actorUserId
+        );
+
+      return res.status(200).json({
+        success: true,
+        data: updatedAppointment,
+        message: "Inspection completed and quote provided successfully",
+      });
+    } catch (error) {
+      return res.status(500).json({
+        success: false,
+        message: error.message || "Failed to submit inspection and quote",
+      });
+    }
+  },
+
+  // Process quote response by appointment
+  processQuoteResponseByAppointment: async (req, res) => {
+    try {
+      const { appointmentId } = req.params;
+      const { status, notes } = req.body;
+
+      if (!status) {
+        return res.status(400).json({
+          success: false,
+          message: "Response status is required",
+        });
+      }
+
+      if (!["approved", "rejected"].includes(status)) {
+        return res.status(400).json({
+          success: false,
+          message: "Status must be either 'approved' or 'rejected'",
+        });
+      }
+
+      const updatedAppointment =
+        await workProgressTrackingService.processAppointmentQuoteResponse(
+          appointmentId,
+          { status, notes }
+        );
+
+      return res.status(200).json({
+        success: true,
+        data: updatedAppointment,
+        message:
+          status === "approved"
+            ? "Quote approved successfully"
+            : "Quote rejected successfully",
+      });
+    } catch (error) {
+      return res.status(500).json({
+        success: false,
+        message: error.message || "Failed to process quote response",
       });
     }
   },
@@ -744,10 +891,13 @@ const workProgressTrackingController = {
         });
       }
 
-      const result = await workProgressTrackingService.addTechnicianToProgress(id, {
-        technicianId,
-        role: role || "assistant"
-      });
+      const result = await workProgressTrackingService.addTechnicianToProgress(
+        id,
+        {
+          technicianId,
+          role: role || "assistant",
+        }
+      );
 
       res.status(200).json({
         success: true,
@@ -767,7 +917,11 @@ const workProgressTrackingController = {
     try {
       const { id, technicianId } = req.params;
 
-      const result = await workProgressTrackingService.removeTechnicianFromProgress(id, technicianId);
+      const result =
+        await workProgressTrackingService.removeTechnicianFromProgress(
+          id,
+          technicianId
+        );
 
       res.status(200).json({
         success: true,
@@ -777,7 +931,8 @@ const workProgressTrackingController = {
     } catch (error) {
       res.status(500).json({
         success: false,
-        message: error.message || "Failed to remove technician from work progress",
+        message:
+          error.message || "Failed to remove technician from work progress",
       });
     }
   },

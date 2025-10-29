@@ -177,6 +177,30 @@ const workProgressTrackingService = {
         throw new Error("Progress record already exists for this appointment");
       }
 
+      // Enforce quote approval before creating work progress (if quote provided previously)
+      try {
+        const appt = await Appointment.findById(progressData.appointmentId);
+        if (
+          appt &&
+          appt.inspectionAndQuote &&
+          appt.inspectionAndQuote.quoteDetails
+        ) {
+          const qStatus = appt.inspectionAndQuote.quoteStatus;
+          if (qStatus !== "approved") {
+            throw new Error(
+              "Cannot create work progress: quote is not approved yet"
+            );
+          }
+          // Auto-initialize progress status to quote_approved so technician can start
+          if (!progressData.currentStatus) {
+            progressData.currentStatus = "quote_approved";
+          }
+        }
+      } catch (e) {
+        // Re-throw as validation error to block creation
+        throw e;
+      }
+
       // Create new progress record
       const newProgressRecord = new WorkProgressTracking(progressData);
       await newProgressRecord.save();
@@ -219,6 +243,29 @@ const workProgressTrackingService = {
       return progressRecord;
     } catch (error) {
       throw new Error(`Error updating progress record: ${error.message}`);
+    }
+  },
+
+  // Get appointment quote details
+  getAppointmentQuote: async (appointmentId) => {
+    try {
+      if (!mongoose.Types.ObjectId.isValid(appointmentId)) {
+        throw new Error("Invalid appointment ID");
+      }
+
+      const appointment = await Appointment.findById(appointmentId);
+      if (!appointment) {
+        throw new Error("Appointment not found");
+      }
+
+      const quote = appointment.inspectionAndQuote || null;
+      return {
+        appointmentId: appointment._id,
+        status: appointment.status,
+        quote,
+      };
+    } catch (error) {
+      throw new Error(`Error fetching appointment quote: ${error.message}`);
     }
   },
 
@@ -568,6 +615,259 @@ const workProgressTrackingService = {
     }
   },
 
+  // Submit inspection and quote directly by appointment (before creating progress)
+  submitAppointmentInspectionAndQuote: async (
+    appointmentId,
+    inspectionData,
+    actorUserId
+  ) => {
+    try {
+      if (!mongoose.Types.ObjectId.isValid(appointmentId)) {
+        throw new Error("Invalid appointment ID");
+      }
+
+      const appointment = await Appointment.findById(appointmentId);
+      if (!appointment) {
+        throw new Error("Appointment not found");
+      }
+
+      // Validate required fields
+      if (
+        !inspectionData.vehicleCondition ||
+        !inspectionData.diagnosisDetails
+      ) {
+        throw new Error("Vehicle condition and diagnosis details are required");
+      }
+
+      // Validate and calculate quote
+      if (!inspectionData.quoteDetails) {
+        throw new Error("Quote details with items are required");
+      }
+
+      if (typeof inspectionData.quoteDetails === "object") {
+        const { items } = inspectionData.quoteDetails;
+
+        if (!Array.isArray(items) || items.length === 0) {
+          throw new Error("Quote must have at least one item");
+        }
+
+        for (const item of items) {
+          if (
+            !item.name ||
+            typeof item.quantity !== "number" ||
+            typeof item.unitPrice !== "number"
+          ) {
+            throw new Error(
+              "Each item must have name, quantity, and unitPrice"
+            );
+          }
+          if (item.quantity <= 0 || item.unitPrice < 0) {
+            throw new Error(
+              "Item quantity must be positive and unitPrice cannot be negative"
+            );
+          }
+        }
+
+        const calculatedAmount = calculateQuoteAmount(
+          inspectionData.quoteDetails
+        );
+        if (calculatedAmount <= 0) {
+          throw new Error(
+            "Quote must have at least one item with valid quantity and price"
+          );
+        }
+        inspectionData.quoteAmount = calculatedAmount;
+      }
+
+      // Update appointment inspection/quote info
+      appointment.statusHistory = appointment.statusHistory || [];
+      try {
+        appointment.statusHistory.push({
+          from: appointment.status,
+          to: "quote_provided",
+          at: new Date(),
+        });
+      } catch (_) {}
+
+      appointment.status = "quote_provided";
+      appointment.inspectionAndQuote = {
+        inspectionNotes: inspectionData.inspectionNotes || "",
+        inspectionCompletedAt: new Date(),
+        vehicleCondition: inspectionData.vehicleCondition,
+        diagnosisDetails: inspectionData.diagnosisDetails,
+        quoteAmount: inspectionData.quoteAmount,
+        quoteDetails: inspectionData.quoteDetails,
+        quotedAt: new Date(),
+        quoteStatus: "pending",
+      };
+      await appointment.save();
+
+      // Best-effort: deduct inventory for quoted parts at the center
+      try {
+        if (
+          typeof inspectionData.quoteDetails === "object" &&
+          Array.isArray(inspectionData.quoteDetails.items) &&
+          inspectionData.quoteDetails.items.length > 0 &&
+          appointment.serviceCenter
+        ) {
+          const serviceCenterId = appointment.serviceCenter;
+          for (const item of inspectionData.quoteDetails.items) {
+            if (item.partId && item.quantity > 0) {
+              const inventoryItem = await CenterInventory.findOne({
+                centerId: serviceCenterId,
+                partId: item.partId,
+              });
+              if (inventoryItem) {
+                const { default: inventoryService } = await import(
+                  "./inventoryService.js"
+                );
+                await inventoryService.createTransaction(
+                  {
+                    inventoryId: inventoryItem._id,
+                    transactionType: "out",
+                    quantity: item.quantity,
+                    referenceType: "quote",
+                    referenceId: appointment._id,
+                    notes: `Auto-deducted for appointment quote #${appointment._id}`,
+                  },
+                  actorUserId && mongoose.Types.ObjectId.isValid(actorUserId)
+                    ? actorUserId
+                    : undefined
+                );
+              }
+            }
+          }
+        }
+      } catch (e) {
+        // eslint-disable-next-line no-console
+        console.error("Error deducting inventory for appointment quote:", e);
+      }
+
+      // Best-effort: notify customer
+      try {
+        await (
+          await import("./emailService.js")
+        ).sendQuoteProvided(appointment);
+      } catch (e) {
+        // eslint-disable-next-line no-console
+        console.error("Send quote provided email failed:", e);
+      }
+
+      return appointment;
+    } catch (error) {
+      throw new Error(
+        `Error submitting appointment inspection and quote: ${error.message}`
+      );
+    }
+  },
+
+  // Process quote response by appointment (approve/reject) before progress exists
+  processAppointmentQuoteResponse: async (appointmentId, response) => {
+    try {
+      if (!mongoose.Types.ObjectId.isValid(appointmentId)) {
+        throw new Error("Invalid appointment ID");
+      }
+
+      const appointment = await Appointment.findById(appointmentId);
+      if (!appointment) {
+        throw new Error("Appointment not found");
+      }
+
+      if (appointment.status !== "quote_provided") {
+        throw new Error("No quote has been provided yet for this appointment");
+      }
+
+      if (!["approved", "rejected"].includes(response.status)) {
+        throw new Error(
+          "Response status must be either 'approved' or 'rejected'"
+        );
+      }
+
+      appointment.statusHistory = appointment.statusHistory || [];
+      try {
+        appointment.statusHistory.push({
+          from: appointment.status,
+          to:
+            response.status === "approved"
+              ? "quote_approved"
+              : "quote_rejected",
+          at: new Date(),
+        });
+      } catch (_) {}
+
+      if (response.status === "approved") {
+        appointment.status = "quote_approved";
+        appointment.inspectionAndQuote = appointment.inspectionAndQuote || {};
+        appointment.inspectionAndQuote.quoteStatus = "approved";
+        appointment.inspectionAndQuote.customerResponseAt = new Date();
+        appointment.inspectionAndQuote.customerResponseNotes =
+          response.notes || "";
+
+        // Auto-create reservation from quote details
+        try {
+          const quoteDetails = appointment.inspectionAndQuote?.quoteDetails;
+          if (
+            quoteDetails &&
+            Array.isArray(quoteDetails.items) &&
+            quoteDetails.items.length > 0
+          ) {
+            const items = quoteDetails.items
+              .filter((it) => it.partId && it.quantity > 0)
+              .map((it) => ({ partId: it.partId, quantity: it.quantity }));
+            if (items.length > 0) {
+              const { default: reservationService } = await import(
+                "./inventoryReservationService.js"
+              );
+              await reservationService.hold({
+                appointmentId: appointment._id,
+                serviceCenterId: appointment.serviceCenter,
+                items,
+                expiresAt: new Date(Date.now() + 48 * 60 * 60 * 1000),
+                notes: "Auto-reservation from approved quote",
+              });
+            }
+          }
+        } catch (e) {
+          // eslint-disable-next-line no-console
+          console.error("Auto reservation from appointment quote error:", e);
+        }
+
+        // Notify
+        try {
+          await (
+            await import("./emailService.js")
+          ).sendQuoteApproved(appointment);
+        } catch (e) {
+          console.error("Send quote approved email failed:", e);
+        }
+      } else {
+        appointment.status = "quote_rejected";
+        appointment.inspectionAndQuote = appointment.inspectionAndQuote || {};
+        appointment.inspectionAndQuote.quoteStatus = "rejected";
+        appointment.inspectionAndQuote.customerResponseAt = new Date();
+        appointment.inspectionAndQuote.customerResponseNotes =
+          response.notes || "";
+
+        // Notify
+        try {
+          await (
+            await import("./emailService.js")
+          ).sendQuoteRejected(appointment);
+        } catch (e) {
+          console.error("Send quote rejected email failed:", e);
+        }
+      }
+
+      await appointment.save();
+
+      return appointment;
+    } catch (error) {
+      throw new Error(
+        `Error processing appointment quote response: ${error.message}`
+      );
+    }
+  },
+
   // Process customer response to quote (approve/reject)
   processQuoteResponse: async (id, response) => {
     try {
@@ -717,9 +1017,23 @@ const workProgressTrackingService = {
 
       // Validate that quote has been approved
       if (progressRecord.currentStatus !== "quote_approved") {
-        throw new Error(
-          "Cannot start maintenance: quote has not been approved"
-        );
+        // Accept appointment-level approval as gate and sync status
+        try {
+          const appt = await Appointment.findById(progressRecord.appointmentId);
+          if (appt && appt.status === "quote_approved") {
+            progressRecord.currentStatus = "quote_approved";
+            await progressRecord.save();
+          } else {
+            throw new Error(
+              "Cannot start maintenance: quote has not been approved"
+            );
+          }
+        } catch (e) {
+          throw new Error(
+            e?.message ||
+              "Cannot start maintenance: quote has not been approved"
+          );
+        }
       }
 
       // Update status to maintenance in progress

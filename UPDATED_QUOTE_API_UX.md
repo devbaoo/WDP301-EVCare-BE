@@ -23,6 +23,103 @@
 
 ## 🧪 Test Cases:
 
+### New: Quote BEFORE creating Work Progress (by Appointment)
+
+Request:
+
+```json
+POST /api/appointments/:appointmentId/inspection-quote
+{
+  "vehicleCondition": "Ổn định",
+  "diagnosisDetails": "Cần thay dầu và lọc",
+  "inspectionNotes": "Không lỗi nghiêm trọng",
+  "quoteDetails": {
+    "items": [
+      { "partId": "6752b1234567890abcdef123", "quantity": 1, "unitPrice": 200000, "name": "Dầu" },
+      { "partId": "6752b1234567890abcdef124", "quantity": 1, "unitPrice": 300000, "name": "Lọc dầu" }
+    ]
+  }
+}
+```
+
+Response:
+
+```json
+200 OK
+{
+  "success": true,
+  "data": {
+    "_id": "<appointmentId>",
+    "status": "quote_provided",
+    "inspectionAndQuote": {
+      "vehicleCondition": "Ổn định",
+      "diagnosisDetails": "Cần thay dầu và lọc",
+      "inspectionNotes": "Không lỗi nghiêm trọng",
+      "quoteAmount": 500000,
+      "quoteDetails": {
+        "items": [
+          { "partId": "6752b1234567890abcdef123", "quantity": 1, "unitPrice": 200000, "name": "Dầu" },
+          { "partId": "6752b1234567890abcdef124", "quantity": 1, "unitPrice": 300000, "name": "Lọc dầu" }
+        ]
+      },
+      "quoteStatus": "pending",
+      "quotedAt": "2025-10-29T07:00:00.000Z",
+      "inspectionCompletedAt": "2025-10-29T07:00:00.000Z"
+    }
+  },
+  "message": "Inspection completed and quote provided successfully"
+}
+```
+
+Approve/Reject quote (by Appointment):
+
+```json
+PUT /api/appointments/:appointmentId/quote-response
+{ "status": "approved", "notes": "Đồng ý" }
+
+200 OK
+{
+  "success": true,
+  "data": {
+    "_id": "<appointmentId>",
+    "status": "quote_approved",
+    "inspectionAndQuote": {
+      "quoteStatus": "approved",
+      "customerResponseAt": "2025-10-29T07:05:00.000Z",
+      "customerResponseNotes": "Đồng ý"
+    }
+  },
+  "message": "Quote approved successfully"
+}
+```
+
+View quote (by Appointment):
+
+```json
+GET /api/appointments/:appointmentId/quote
+
+200 OK
+{
+  "success": true,
+  "data": {
+    "appointmentId": "<appointmentId>",
+    "status": "quote_provided",
+    "quote": {
+      "vehicleCondition": "...",
+      "diagnosisDetails": "...",
+      "inspectionNotes": "...",
+      "quoteAmount": 500000,
+      "quoteDetails": { "items": [ /* ... */ ] },
+      "quoteStatus": "pending",
+      "quotedAt": "...",
+      "inspectionCompletedAt": "..."
+    }
+  }
+}
+```
+
+Business rule: Work Progress chỉ được tạo khi `appointment.status === "quote_approved"` hoặc `inspectionAndQuote.quoteStatus === "approved"`.
+
 ### Test 1: Optimal UX Format (Technician chỉ select parts)
 
 ```json
@@ -135,7 +232,8 @@ fetch("/api/parts")
       type="number"
       placeholder="Số lượng"
       min="1"
-      v-model="quantities[part._id]" />
+      v-model="quantities[part._id]"
+    />
   </div>
 </div>
 
