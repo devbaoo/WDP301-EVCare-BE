@@ -135,8 +135,8 @@ const getAvailableSlots = async (serviceCenterId, serviceTypeId, date) => {
     // Get technicians for this service center
     let technicians = Array.isArray(serviceCenter.staff)
       ? serviceCenter.staff.filter(
-        (staff) => staff.role === "technician" && staff.isActive
-      )
+          (staff) => staff.role === "technician" && staff.isActive
+        )
       : [];
 
     // Fallback: hydrate from StaffAssignment if center.staff is empty or missing
@@ -230,7 +230,7 @@ const getAvailableSlots = async (serviceCenterId, serviceTypeId, date) => {
       shortKeys[dayIndex].toUpperCase(),
       longKeys[dayIndex].toUpperCase(),
       shortKeys[dayIndex].charAt(0).toUpperCase() +
-      shortKeys[dayIndex].slice(1),
+        shortKeys[dayIndex].slice(1),
       longKeys[dayIndex].charAt(0).toUpperCase() + longKeys[dayIndex].slice(1),
     ];
 
@@ -279,8 +279,8 @@ const getAvailableSlots = async (serviceCenterId, serviceTypeId, date) => {
       const endTimeString = `${Math.floor((time + serviceDuration) / 60)
         .toString()
         .padStart(2, "0")}:${((time + serviceDuration) % 60)
-          .toString()
-          .padStart(2, "0")}`;
+        .toString()
+        .padStart(2, "0")}`;
 
       // Check if slot conflicts with existing appointments
       const hasConflict = existingAppointments.some((appointment) => {
@@ -544,28 +544,53 @@ const createBooking = async (bookingData) => {
 
     // Auto-reserve parts (hold) when booking is created and service requires parts
     try {
-      const { default: reservationService } = await import("./inventoryReservationService.js");
+      const { default: reservationService } = await import(
+        "./inventoryReservationService.js"
+      );
       // Determine required parts from serviceType or booking payload (serviceDetails.requiredParts)
       let requiredParts = [];
-      if (appointment.serviceDetails && Array.isArray(appointment.serviceDetails.requiredParts)) {
-        requiredParts = appointment.serviceDetails.requiredParts.map(p => ({ partId: p.partId, quantity: p.quantity }));
+      if (
+        appointment.serviceDetails &&
+        Array.isArray(appointment.serviceDetails.requiredParts)
+      ) {
+        requiredParts = appointment.serviceDetails.requiredParts.map((p) => ({
+          partId: p.partId,
+          quantity: p.quantity,
+        }));
       } else if (serviceType && Array.isArray(serviceType.requiredParts)) {
-        requiredParts = serviceType.requiredParts.map(p => ({ partId: p.partId, quantity: p.quantity }));
+        requiredParts = serviceType.requiredParts.map((p) => ({
+          partId: p.partId,
+          quantity: p.quantity,
+        }));
       }
 
       if (requiredParts.length > 0) {
         // If payment required and online -> set short TTL to allow payment (30 minutes)
         const settingsModule = await import("../models/systemSettings.js");
         const SystemSettings = settingsModule.default || settingsModule;
-        const minutes = (await SystemSettings.getSettings())?.autoCancelUnpaidMinutes || 30;
+        const minutes =
+          (await SystemSettings.getSettings())?.autoCancelUnpaidMinutes || 30;
         const ttl = new Date(Date.now() + minutes * 60 * 1000);
 
-        const holdResult = await reservationService.hold({ appointmentId: appointment._id, serviceCenterId, items: requiredParts, expiresAt: ttl, notes: 'Auto-hold on booking creation' });
+        const holdResult = await reservationService.hold({
+          appointmentId: appointment._id,
+          serviceCenterId,
+          items: requiredParts,
+          expiresAt: ttl,
+          notes: "Auto-hold on booking creation",
+        });
         // If hold failed due to insufficient stock, attach note for customer but still allow booking
         if (!holdResult.success) {
           appointment.internalNotes = appointment.internalNotes || [];
-          appointment.internalNotes.push({ note: `Auto-hold failed: ${holdResult.message}`, addedAt: new Date(), addedBy: null, isVisibleToCustomer: false });
-          appointment.notes = (appointment.notes || '') + '\nLưu ý: một hoặc nhiều linh kiện hiện không đủ hàng. Chúng tôi sẽ liên hệ sớm.';
+          appointment.internalNotes.push({
+            note: `Auto-hold failed: ${holdResult.message}`,
+            addedAt: new Date(),
+            addedBy: null,
+            isVisibleToCustomer: false,
+          });
+          appointment.notes =
+            (appointment.notes || "") +
+            "\nLưu ý: một hoặc nhiều linh kiện hiện không đủ hàng. Chúng tôi sẽ liên hệ sớm.";
           await appointment.save();
         } else {
           // attach reservation id to appointment for later use
@@ -577,7 +602,7 @@ const createBooking = async (bookingData) => {
     } catch (e) {
       // best-effort: do not fail booking on reservation errors
       // eslint-disable-next-line no-console
-      console.error('Auto-hold on booking error:', e);
+      console.error("Auto-hold on booking error:", e);
     }
 
     // Update package usage if using package
@@ -775,34 +800,56 @@ const getCustomerBookings = async (customerId, filters = {}) => {
 const cancelBooking = async (bookingId, actingUser, reason) => {
   try {
     // actingUser: { id, role }
-    const appointment = await Appointment.findById(bookingId).populate('customer');
+    const appointment = await Appointment.findById(bookingId).populate(
+      "customer"
+    );
 
     if (!appointment) {
-      return { success: false, statusCode: 404, message: 'Không tìm thấy booking' };
+      return {
+        success: false,
+        statusCode: 404,
+        message: "Không tìm thấy booking",
+      };
     }
 
     // Authorization: customer can cancel their own booking; staff/technician/admin can cancel for center
-    if (actingUser.role === 'customer') {
+    if (actingUser.role === "customer") {
       if (appointment.customer.toString() !== actingUser.id.toString()) {
-        return { success: false, statusCode: 403, message: 'Bạn không có quyền hủy booking này' };
+        return {
+          success: false,
+          statusCode: 403,
+          message: "Bạn không có quyền hủy booking này",
+        };
       }
-    } else if (!['admin', 'staff', 'technician', 'manager'].includes(actingUser.role)) {
-      return { success: false, statusCode: 403, message: 'Bạn không có quyền hủy booking' };
+    } else if (
+      !["admin", "staff", "technician", "manager"].includes(actingUser.role)
+    ) {
+      return {
+        success: false,
+        statusCode: 403,
+        message: "Bạn không có quyền hủy booking",
+      };
     }
 
-    if (appointment.status === 'completed') {
-      return { success: false, statusCode: 400, message: 'Không thể hủy booking đã hoàn thành' };
+    if (appointment.status === "completed") {
+      return {
+        success: false,
+        statusCode: 400,
+        message: "Không thể hủy booking đã hoàn thành",
+      };
     }
 
     // If there is a reservation, release it (best-effort)
     try {
-      const reservationService = (await import('./inventoryReservationService.js')).default;
+      const reservationService = (
+        await import("./inventoryReservationService.js")
+      ).default;
       const resId = appointment.inspectionAndQuote?.reservationId;
       if (resId) {
         await reservationService.release(resId);
       }
     } catch (e) {
-      console.error('Error releasing reservation on cancel:', e);
+      console.error("Error releasing reservation on cancel:", e);
     }
 
     // record cancellation meta
@@ -810,24 +857,62 @@ const cancelBooking = async (bookingId, actingUser, reason) => {
     appointment.cancellation.isCancelled = true;
     appointment.cancellation.cancelledAt = new Date();
     appointment.cancellation.cancelledBy = actingUser.id;
-    appointment.cancellation.reason = reason || appointment.cancellation.reason || 'N/A';
-    appointment.status = 'cancelled';
+    appointment.cancellation.reason =
+      reason || appointment.cancellation.reason || "N/A";
+    appointment.status = "cancelled";
 
     await appointment.save();
 
-    // Notify customer if cancel initiated by staff/tech/admin
+    // Free any technician schedules that had this appointment assigned (best-effort)
     try {
-      if (actingUser.role !== 'customer') {
-        await (await import('./emailService.js')).sendAppointmentCancelled(appointment);
+      const TechnicianSchedule = (
+        await import("../models/technicianSchedule.js")
+      ).default;
+
+      const schedules = await TechnicianSchedule.find({
+        assignedAppointments: appointment._id,
+      });
+
+      for (const sched of schedules) {
+        const updatedSched = await TechnicianSchedule.findByIdAndUpdate(
+          sched._id,
+          { $pull: { assignedAppointments: appointment._id } },
+          { new: true, runValidators: true }
+        )
+          .populate("technicianId", "firstName lastName email phoneNumber")
+          .populate("centerId", "name address")
+          .populate("assignedAppointments");
+
+        if (updatedSched) {
+          // Mark the schedule as available again
+          updatedSched.availability = "available";
+          await updatedSched.save();
+        }
       }
     } catch (e) {
-      console.error('Send appointment cancelled email failed:', e);
+      // eslint-disable-next-line no-console
+      console.error("Free schedules on cancel error:", e);
     }
 
-    return { success: true, statusCode: 200, message: 'Hủy booking thành công' };
+    // Notify customer if cancel initiated by staff/tech/admin
+    try {
+      if (actingUser.role !== "customer") {
+        await (
+          await import("./emailService.js")
+        ).sendAppointmentCancelled(appointment);
+      }
+    } catch (e) {
+      console.error("Send appointment cancelled email failed:", e);
+    }
+
+    return {
+      success: true,
+      statusCode: 200,
+      message: "Hủy booking thành công",
+    };
   } catch (error) {
-    console.error('Cancel booking error:', error);
-    return { success: false, statusCode: 500, message: 'Lỗi khi hủy booking' };
+    console.error("Cancel booking error:", error);
+    return { success: false, statusCode: 500, message: "Lỗi khi hủy booking" };
   }
 };
 
@@ -890,8 +975,7 @@ const rescheduleBooking = async (bookingId, customerId, rescheduleData) => {
     }
 
     // Determine duration (fallback to 60 minutes if not defined)
-    const duration =
-      appointment?.serviceType?.serviceDetails?.duration || 60;
+    const duration = appointment?.serviceType?.serviceDetails?.duration || 60;
 
     // Parse start time
     const [startHour, startMin] = newTime.split(":").map(Number);
@@ -945,8 +1029,12 @@ const rescheduleBooking = async (bookingId, customerId, rescheduleData) => {
 
     // Also send a short notification (best-effort) via new helper if available
     try {
-      await (await import('./emailService.js')).sendBookingConfirmed(appointment);
-    } catch (e) { /* best-effort */ }
+      await (
+        await import("./emailService.js")
+      ).sendBookingConfirmed(appointment);
+    } catch (e) {
+      /* best-effort */
+    }
 
     return {
       success: true,
@@ -1171,7 +1259,8 @@ const getPendingOfflinePaymentBookings = async (filters = {}) => {
     return {
       success: true,
       statusCode: 200,
-      message: "Lấy danh sách booking thanh toán offline - chờ xác nhận thành công",
+      message:
+        "Lấy danh sách booking thanh toán offline - chờ xác nhận thành công",
       data: {
         appointments,
         pagination: {
@@ -1291,7 +1380,11 @@ const confirmBooking = async (bookingId, staffId) => {
 
     // Với upfront payment (deposit/inspection fee): phải thanh toán trước khi confirm
     // Với offline payment: chỉ cần xác nhận lịch hẹn, thanh toán chính sẽ ở cuối workflow
-    if (requiresUpfront && !isOfflinePayment && appointment.payment.status !== "paid") {
+    if (
+      requiresUpfront &&
+      !isOfflinePayment &&
+      appointment.payment.status !== "paid"
+    ) {
       return {
         success: false,
         statusCode: 400,
@@ -1324,17 +1417,24 @@ const confirmBooking = async (bookingId, staffId) => {
         // Determine parts required for this appointment
         const requiredParts = [];
         // 1) If appointment has explicit serviceDetails.requiredParts (custom flow)
-        if (appointment.serviceDetails && Array.isArray(appointment.serviceDetails.requiredParts)) {
-          appointment.serviceDetails.requiredParts.forEach(p => {
-            if (p.partId && p.quantity > 0) requiredParts.push({ partId: p.partId, quantity: p.quantity });
+        if (
+          appointment.serviceDetails &&
+          Array.isArray(appointment.serviceDetails.requiredParts)
+        ) {
+          appointment.serviceDetails.requiredParts.forEach((p) => {
+            if (p.partId && p.quantity > 0)
+              requiredParts.push({ partId: p.partId, quantity: p.quantity });
           });
         }
         // 2) Fallback: try to use serviceType.requiredParts (if the service type defines requiredParts)
         if (requiredParts.length === 0 && appointment.serviceType) {
-          const svc = await ServiceType.findById(appointment.serviceType).lean();
+          const svc = await ServiceType.findById(
+            appointment.serviceType
+          ).lean();
           if (svc && Array.isArray(svc.requiredParts)) {
-            svc.requiredParts.forEach(p => {
-              if (p.partId && p.quantity > 0) requiredParts.push({ partId: p.partId, quantity: p.quantity });
+            svc.requiredParts.forEach((p) => {
+              if (p.partId && p.quantity > 0)
+                requiredParts.push({ partId: p.partId, quantity: p.quantity });
             });
           }
         }
@@ -1344,10 +1444,19 @@ const confirmBooking = async (bookingId, staffId) => {
           const insufficient = [];
           const toConsume = []; // will hold { inventoryId, quantity }
           for (const rp of requiredParts) {
-            const inv = await (await import("../models/centerInventory.js")).default.findOne({ centerId: appointment.serviceCenter, partId: rp.partId });
+            const inv = await (
+              await import("../models/centerInventory.js")
+            ).default.findOne({
+              centerId: appointment.serviceCenter,
+              partId: rp.partId,
+            });
             const available = inv?.currentStock || 0;
             if (!inv || available < rp.quantity) {
-              insufficient.push({ partId: rp.partId, required: rp.quantity, available });
+              insufficient.push({
+                partId: rp.partId,
+                required: rp.quantity,
+                available,
+              });
             } else {
               toConsume.push({ inventoryId: inv._id, quantity: rp.quantity });
             }
@@ -1357,10 +1466,22 @@ const confirmBooking = async (bookingId, staffId) => {
             // All parts available — consume (create 'out' transactions)
             for (const c of toConsume) {
               // use system user (staffId) as performedBy
-              const tx = await inventoryService.createTransaction({ inventoryId: c.inventoryId, transactionType: 'out', quantity: c.quantity, referenceType: 'service', referenceId: appointment._id }, staffId);
+              const tx = await inventoryService.createTransaction(
+                {
+                  inventoryId: c.inventoryId,
+                  transactionType: "out",
+                  quantity: c.quantity,
+                  referenceType: "service",
+                  referenceId: appointment._id,
+                },
+                staffId
+              );
               if (!tx || !tx.success) {
                 // if any transaction fails, record as insufficient (rare) and break
-                insufficient.push({ inventoryId: c.inventoryId, message: tx?.message || 'Transaction failed' });
+                insufficient.push({
+                  inventoryId: c.inventoryId,
+                  message: tx?.message || "Transaction failed",
+                });
                 break;
               }
             }
@@ -1369,21 +1490,34 @@ const confirmBooking = async (bookingId, staffId) => {
           if (insufficient.length > 0) {
             // Add an internal note and customer-visible note about backorder/ETA
             appointment.internalNotes = appointment.internalNotes || [];
-            appointment.internalNotes.push({ note: `Parts insufficient on confirm: ${JSON.stringify(insufficient)}. Customer notified of ETA 5-7 days.`, addedAt: new Date(), addedBy: staffId, isVisibleToCustomer: false });
+            appointment.internalNotes.push({
+              note: `Parts insufficient on confirm: ${JSON.stringify(
+                insufficient
+              )}. Customer notified of ETA 5-7 days.`,
+              addedAt: new Date(),
+              addedBy: staffId,
+              isVisibleToCustomer: false,
+            });
 
-            appointment.notes = appointment.notes || '';
-            appointment.notes += '\nLưu ý: một số linh kiện hiện tại tạm hết. Dự kiến có hàng sau 5-7 ngày. Chúng tôi vẫn giữ lịch hẹn cho bạn.';
+            appointment.notes = appointment.notes || "";
+            appointment.notes +=
+              "\nLưu ý: một số linh kiện hiện tại tạm hết. Dự kiến có hàng sau 5-7 ngày. Chúng tôi vẫn giữ lịch hẹn cho bạn.";
             // Do not block confirmation — allow booking but mark warning
           }
         }
       } catch (e) {
         // best-effort: do not fail confirmation on inventory errors
         // log and attach an internal note
-        console.error('Inventory handling on confirm error:', e);
+        console.error("Inventory handling on confirm error:", e);
         appointment.internalNotes = appointment.internalNotes || [];
-        appointment.internalNotes.push({ note: `Inventory check error on confirm: ${e.message || e}`, addedAt: new Date(), addedBy: staffId, isVisibleToCustomer: false });
+        appointment.internalNotes.push({
+          note: `Inventory check error on confirm: ${e.message || e}`,
+          addedAt: new Date(),
+          addedBy: staffId,
+          isVisibleToCustomer: false,
+        });
       }
-    } catch (_) { }
+    } catch (_) {}
 
     appointment.status = "confirmed";
     appointment.confirmation = appointment.confirmation || {};
@@ -1398,9 +1532,11 @@ const confirmBooking = async (bookingId, staffId) => {
 
     // Send customer email (best-effort)
     try {
-      await (await import('./emailService.js')).sendBookingConfirmed(appointment);
+      await (
+        await import("./emailService.js")
+      ).sendBookingConfirmed(appointment);
     } catch (e) {
-      console.error('Send booking confirmed email failed:', e);
+      console.error("Send booking confirmed email failed:", e);
     }
 
     return {
