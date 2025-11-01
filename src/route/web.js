@@ -942,6 +942,28 @@ let initWebRoutes = (app) => {
     workProgressTrackingController.getProgressRecordByAppointment
   );
 
+  // Get appointment quote so customer can view
+  router.get(
+    "/api/appointments/:appointmentId/quote",
+    protect,
+    workProgressTrackingController.getAppointmentQuote
+  );
+
+  // Submit quote BEFORE creating work progress (by appointment)
+  router.post(
+    "/api/appointments/:appointmentId/inspection-quote",
+    protect,
+    authorize("technician"),
+    workProgressTrackingController.submitInspectionAndQuoteByAppointment
+  );
+
+  // Customer approves/rejects quote at appointment level
+  router.put(
+    "/api/appointments/:appointmentId/quote-response",
+    protect,
+    workProgressTrackingController.processQuoteResponseByAppointment
+  );
+
   router.post(
     "/api/work-progress/:id/inspection-quote",
     protect,
