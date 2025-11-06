@@ -814,7 +814,11 @@ const cancelBooking = async (bookingId, actingUser, reason) => {
 
     // Authorization: customer can cancel their own booking; staff/technician/admin can cancel for center
     if (actingUser.role === "customer") {
-      if (appointment.customer.toString() !== actingUser.id.toString()) {
+      // support both populated (object) and unpopulated (ObjectId) forms
+      const appointmentCustomerId = appointment?.customer?._id
+        ? appointment.customer._id.toString()
+        : appointment.customer?.toString();
+      if (appointmentCustomerId !== actingUser.id.toString()) {
         return {
           success: false,
           statusCode: 403,
