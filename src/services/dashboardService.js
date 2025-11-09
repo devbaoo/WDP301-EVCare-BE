@@ -17,7 +17,7 @@ const getOverviewStats = async (filters = {}) => {
   try {
     const { startDate, endDate, serviceCenterId } = filters;
 
-    // Build date filter
+    // Build date filter for createdAt
     const dateFilter = {};
     if (startDate || endDate) {
       dateFilter.createdAt = {};
@@ -25,23 +25,37 @@ const getOverviewStats = async (filters = {}) => {
       if (endDate) dateFilter.createdAt.$lte = new Date(endDate);
     }
 
+    // Build date filter for appointment time
+    const appointmentDateFilter = {};
+    if (startDate || endDate) {
+      appointmentDateFilter["appointmentTime.date"] = {};
+      if (startDate)
+        appointmentDateFilter["appointmentTime.date"].$gte = new Date(
+          startDate
+        );
+      if (endDate)
+        appointmentDateFilter["appointmentTime.date"].$lte = new Date(endDate);
+    }
+
     // Build service center filter
     const centerFilter = serviceCenterId
       ? { serviceCenter: serviceCenterId }
       : {};
 
-    // 1. Tổng doanh thu từ payments đã thanh toán
-    const revenueData = await Payment.aggregate([
+    // 1. Tổng doanh thu từ appointments có status completed
+    const revenueData = await Appointment.aggregate([
       {
         $match: {
-          status: "paid",
-          ...dateFilter,
+          status: "completed",
+          "payment.amount": { $exists: true, $gt: 0 },
+          ...appointmentDateFilter,
+          ...centerFilter,
         },
       },
       {
         $group: {
           _id: null,
-          totalRevenue: { $sum: "$paymentInfo.amount" },
+          totalRevenue: { $sum: "$payment.amount" },
           totalTransactions: { $sum: 1 },
         },
       },
@@ -50,7 +64,7 @@ const getOverviewStats = async (filters = {}) => {
     const revenue = revenueData[0] || { totalRevenue: 0, totalTransactions: 0 };
 
     // 2. Tổng số bookings
-    const bookingFilter = { ...dateFilter, ...centerFilter };
+    const bookingFilter = { ...appointmentDateFilter, ...centerFilter };
     const totalBookings = await Appointment.countDocuments(bookingFilter);
 
     // Bookings theo trạng thái
@@ -103,11 +117,11 @@ const getOverviewStats = async (filters = {}) => {
           as: "serviceInfo",
         },
       },
-      { $unwind: "$serviceInfo" },
+      { $unwind: { path: "$serviceInfo", preserveNullAndEmptyArrays: true } },
       {
         $project: {
           _id: 1,
-          name: "$serviceInfo.name",
+          name: { $ifNull: ["$serviceInfo.name", "Unknown"] },
           count: 1,
         },
       },
@@ -117,15 +131,17 @@ const getOverviewStats = async (filters = {}) => {
     const technicianStats = await Appointment.aggregate([
       {
         $match: {
-          technician: { $ne: null },
+          technician: { $exists: true, $ne: null },
           status: "completed",
-          ...bookingFilter,
+          ...appointmentDateFilter,
+          ...centerFilter,
         },
       },
       {
         $group: {
           _id: "$technician",
           totalJobs: { $sum: 1 },
+          totalRevenue: { $sum: { $ifNull: ["$payment.amount", 0] } },
         },
       },
       { $sort: { totalJobs: -1 } },
@@ -138,13 +154,14 @@ const getOverviewStats = async (filters = {}) => {
           as: "techInfo",
         },
       },
-      { $unwind: "$techInfo" },
+      { $unwind: { path: "$techInfo", preserveNullAndEmptyArrays: true } },
       {
         $project: {
           _id: 1,
-          name: "$techInfo.fullName",
-          email: "$techInfo.email",
+          name: { $ifNull: ["$techInfo.fullName", "Unknown"] },
+          email: { $ifNull: ["$techInfo.email", "N/A"] },
           totalJobs: 1,
+          totalRevenue: 1,
         },
       },
     ]);
@@ -199,15 +216,22 @@ const getRevenueAnalytics = async (filters = {}) => {
   try {
     const { startDate, endDate, groupBy = "day", serviceCenterId } = filters;
 
-    // Build date filter
+    // Build date filter - sử dụng appointmentTime.date cho appointments
     const dateFilter = {
-      status: "paid",
+      status: "completed",
+      "payment.amount": { $exists: true, $gt: 0 },
     };
 
+    // Build service center filter
+    if (serviceCenterId) {
+      dateFilter.serviceCenter = serviceCenterId;
+    }
+
     if (startDate || endDate) {
-      dateFilter.createdAt = {};
-      if (startDate) dateFilter.createdAt.$gte = new Date(startDate);
-      if (endDate) dateFilter.createdAt.$lte = new Date(endDate);
+      dateFilter["appointmentTime.date"] = {};
+      if (startDate)
+        dateFilter["appointmentTime.date"].$gte = new Date(startDate);
+      if (endDate) dateFilter["appointmentTime.date"].$lte = new Date(endDate);
     }
 
     // Group format based on groupBy parameter
@@ -215,31 +239,31 @@ const getRevenueAnalytics = async (filters = {}) => {
     switch (groupBy) {
       case "month":
         groupFormat = {
-          year: { $year: "$createdAt" },
-          month: { $month: "$createdAt" },
+          year: { $year: "$appointmentTime.date" },
+          month: { $month: "$appointmentTime.date" },
         };
         break;
       case "year":
         groupFormat = {
-          year: { $year: "$createdAt" },
+          year: { $year: "$appointmentTime.date" },
         };
         break;
       case "day":
       default:
         groupFormat = {
-          year: { $year: "$createdAt" },
-          month: { $month: "$createdAt" },
-          day: { $dayOfMonth: "$createdAt" },
+          year: { $year: "$appointmentTime.date" },
+          month: { $month: "$appointmentTime.date" },
+          day: { $dayOfMonth: "$appointmentTime.date" },
         };
         break;
     }
 
-    const revenueByTime = await Payment.aggregate([
+    const revenueByTime = await Appointment.aggregate([
       { $match: dateFilter },
       {
         $group: {
           _id: groupFormat,
-          totalRevenue: { $sum: "$paymentInfo.amount" },
+          totalRevenue: { $sum: "$payment.amount" },
           totalTransactions: { $sum: 1 },
         },
       },
