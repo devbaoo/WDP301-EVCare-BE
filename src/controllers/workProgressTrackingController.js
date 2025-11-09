@@ -362,9 +362,8 @@ const workProgressTrackingController = {
             ) {
               return res.status(400).json({
                 success: false,
-                message: `Item ${
-                  i + 1
-                }: name, quantity, and unitPrice are required`,
+                message: `Item ${i + 1
+                  }: name, quantity, and unitPrice are required`,
               });
             }
             if (item.quantity <= 0) {
@@ -647,6 +646,49 @@ const workProgressTrackingController = {
       res.status(500).json({
         success: false,
         message: error.message || "Failed to process cash payment",
+      });
+    }
+  },
+
+  // Process online payment by staff (create PayOS payment link)
+  processOnlinePayment: async (req, res) => {
+    try {
+      const { id } = req.params;
+      const { staffId, amount, notes } = req.body;
+
+      // Validate required fields
+      if (!staffId) {
+        return res.status(400).json({
+          success: false,
+          message: "Staff ID is required",
+        });
+      }
+
+      if (!amount || amount <= 0) {
+        return res.status(400).json({
+          success: false,
+          message: "Valid payment amount is required",
+        });
+      }
+
+      const result = await workProgressTrackingService.processOnlinePayment(
+        id,
+        {
+          staffId,
+          amount,
+          notes,
+        }
+      );
+
+      res.status(200).json({
+        success: true,
+        data: result,
+        message: "Payment link created successfully",
+      });
+    } catch (error) {
+      res.status(500).json({
+        success: false,
+        message: error.message || "Failed to create payment link",
       });
     }
   },

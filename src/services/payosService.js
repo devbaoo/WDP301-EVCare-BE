@@ -82,12 +82,10 @@ const createPaymentLink = async (paymentData) => {
 
     const orderCode = generateOrderCode();
 
-    const returnUrl = `${
-      process.env.FRONTEND_URL || "http://localhost:8080"
-    }/payment/success`;
-    const cancelUrl = `${
-      process.env.FRONTEND_URL || "http://localhost:8080"
-    }/payment/cancel`;
+    const returnUrl = `${process.env.FRONTEND_URL || "http://localhost:8080"
+      }/payment/success`;
+    const cancelUrl = `${process.env.FRONTEND_URL || "http://localhost:8080"
+      }/payment/cancel`;
 
     // Truncate description nếu vượt 25 ký tự (theo code cũ)
     let description = String(paymentData.description).trim();
@@ -149,8 +147,7 @@ const createPaymentLink = async (paymentData) => {
       }
 
       throw new Error(
-        `PayOS API error (${errorData.code}): ${
-          errorData.desc || response.statusText
+        `PayOS API error (${errorData.code}): ${errorData.desc || response.statusText
         }`
       );
     }
@@ -436,8 +433,8 @@ const handleWebhook = async (webhookData, webhookId = null) => {
       netAmount !== undefined
         ? Number(netAmount)
         : numericAmount !== undefined
-        ? numericAmount - numericFee
-        : undefined;
+          ? numericAmount - numericFee
+          : undefined;
 
     // Map status variants (PayOS can send different shapes)
     let normalizedStatus = (status || "").toUpperCase();
@@ -523,8 +520,7 @@ const handleWebhook = async (webhookData, webhookId = null) => {
     const prev = payment.webhook?.data || {};
     const existingId =
       prev.eventId ||
-      `${prev.orderCode || prev.payosInfo?.orderCode || ""}|${prev.status}|${
-        prev.amount
+      `${prev.orderCode || prev.payosInfo?.orderCode || ""}|${prev.status}|${prev.amount
       }`;
 
     if (existingId && existingId === incomingId) {
@@ -576,8 +572,7 @@ const handleWebhook = async (webhookData, webhookId = null) => {
             status: "confirmed",
           });
           console.log(
-            `[${
-              webhookId || "webhook"
+            `[${webhookId || "webhook"
             }] Updated appointment status to confirmed`
           );
         }
@@ -602,8 +597,7 @@ const handleWebhook = async (webhookData, webhookId = null) => {
             },
           });
           console.log(
-            `[${
-              webhookId || "webhook"
+            `[${webhookId || "webhook"
             }] Updated appointment status to cancelled`
           );
         }
@@ -621,8 +615,7 @@ const handleWebhook = async (webhookData, webhookId = null) => {
 
       default:
         console.warn(
-          `[${
-            webhookId || "webhook"
+          `[${webhookId || "webhook"
           }] Unknown payment status: ${status} (normalized: ${finalStatus})`
         );
     }
@@ -652,13 +645,29 @@ const handleWebhook = async (webhookData, webhookId = null) => {
   }
 };
 
-// Get payment status
-const getPaymentStatus = async (paymentId, customerId) => {
+// Get payment status (supports both customer and staff/admin querying)
+// Security logic:
+//  - Customer: must own the payment (payment.customer == user.id)
+//  - Staff/Admin: can view any payment (optional future: restrict by serviceCenter)
+const getPaymentStatus = async (paymentId, user) => {
   try {
-    const payment = await Payment.findOne({
-      _id: paymentId,
-      customer: customerId,
-    }).populate("appointment", "serviceType serviceCenter");
+    if (!paymentId) {
+      return {
+        success: false,
+        statusCode: 400,
+        message: "Thiếu paymentId",
+      };
+    }
+
+    const baseQuery = { _id: paymentId };
+    // Only restrict by customer for non-privileged roles
+    if (!user || !["admin", "staff"].includes(user.role)) {
+      baseQuery.customer = user?.id; // will be undefined if missing -> no match
+    }
+
+    const payment = await Payment.findOne(baseQuery)
+      .populate("appointment", "serviceType serviceCenter status customer")
+      .populate("customer", "fullName email phone role");
 
     if (!payment) {
       return {
@@ -668,11 +677,41 @@ const getPaymentStatus = async (paymentId, customerId) => {
       };
     }
 
+    // If a customer tries to access someone else's payment (should be blocked)
+    if (
+      user &&
+      !["admin", "staff"].includes(user.role) &&
+      payment.customer &&
+      payment.customer._id.toString() !== user.id.toString()
+    ) {
+      return {
+        success: false,
+        statusCode: 403,
+        message: "Bạn không có quyền truy cập thanh toán này",
+      };
+    }
+
+    // Construct a trimmed response object (avoid leaking internal fields)
+    const responseData = {
+      paymentId: payment._id,
+      status: payment.status,
+      method: payment.paymentMethod || payment.paymentInfo?.method || payment.paymentMethod, // legacy compatibility
+      amount: payment.paymentInfo?.amount,
+      currency: payment.paymentInfo?.currency || "VND",
+      orderCode: payment.paymentInfo?.orderCode || payment.payosInfo?.orderCode,
+      paidAt: payment.status === "paid" ? (payment.transaction?.transactionTime || payment.updatedAt) : null,
+      expiresAt: payment.expiresAt,
+      appointment: payment.appointment?._id,
+      appointmentStatus: payment.appointment?.status,
+      serviceCenter: payment.appointment?.serviceCenter,
+      serviceType: payment.appointment?.serviceType,
+    };
+
     return {
       success: true,
       statusCode: 200,
       message: "Lấy trạng thái thanh toán thành công",
-      data: payment,
+      data: responseData,
     };
   } catch (error) {
     console.error("Get payment status error:", error);

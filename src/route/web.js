@@ -750,6 +750,12 @@ let initWebRoutes = (app) => {
     workProgressTrackingController.processCashPayment
   );
   router.post(
+    "/api/work-progress/:id/process-online-payment",
+    protect,
+    authorize("admin", "staff"),
+    workProgressTrackingController.processOnlinePayment
+  );
+  router.post(
     "/api/work-progress/:id/milestones",
     protect,
     authorize("admin", "staff", "technician"),

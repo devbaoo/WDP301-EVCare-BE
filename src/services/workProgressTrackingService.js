@@ -405,7 +405,7 @@ const workProgressTrackingService = {
             updatedRecord.technicianId._id || updatedRecord.technicianId,
             updatedRecord.appointmentId._id || updatedRecord.appointmentId
           );
-        } catch (_) {}
+        } catch (_) { }
       }
 
       return updatedRecord;
@@ -565,7 +565,7 @@ const workProgressTrackingService = {
             to: "inspection_completed",
             at: new Date(),
           });
-        } catch (_) {}
+        } catch (_) { }
         if (updateData.currentStatus === "quote_provided") {
           appointment.status = "quote_provided";
           appointment.inspectionAndQuote = {
@@ -687,7 +687,7 @@ const workProgressTrackingService = {
           to: "quote_provided",
           at: new Date(),
         });
-      } catch (_) {}
+      } catch (_) { }
 
       appointment.status = "quote_provided";
       appointment.inspectionAndQuote = {
@@ -793,7 +793,7 @@ const workProgressTrackingService = {
               : "quote_rejected",
           at: new Date(),
         });
-      } catch (_) {}
+      } catch (_) { }
 
       if (response.status === "approved") {
         appointment.status = "quote_approved";
@@ -918,7 +918,7 @@ const workProgressTrackingService = {
               to: "quote_approved",
               at: new Date(),
             });
-          } catch (_) {}
+          } catch (_) { }
           appointment.status = "quote_approved";
           appointment.inspectionAndQuote.quoteStatus = "approved";
           appointment.inspectionAndQuote.customerResponseAt = new Date();
@@ -968,7 +968,7 @@ const workProgressTrackingService = {
               to: "quote_rejected",
               at: new Date(),
             });
-          } catch (_) {}
+          } catch (_) { }
           appointment.status = "quote_rejected";
           appointment.inspectionAndQuote.quoteStatus = "rejected";
           appointment.inspectionAndQuote.customerResponseAt = new Date();
@@ -1031,7 +1031,7 @@ const workProgressTrackingService = {
         } catch (e) {
           throw new Error(
             e?.message ||
-              "Cannot start maintenance: quote has not been approved"
+            "Cannot start maintenance: quote has not been approved"
           );
         }
       }
@@ -1054,7 +1054,7 @@ const workProgressTrackingService = {
             to: "maintenance_in_progress",
             at: new Date(),
           });
-        } catch (_) {}
+        } catch (_) { }
         appointment.status = "maintenance_in_progress";
         await appointment.save();
         // Notify customer maintenance started
@@ -1121,7 +1121,7 @@ const workProgressTrackingService = {
             to: "maintenance_completed",
             at: new Date(),
           });
-        } catch (_) {}
+        } catch (_) { }
         appointment.status = "maintenance_completed";
         appointment.completion = {
           isCompleted: true,
@@ -1172,7 +1172,7 @@ const workProgressTrackingService = {
             updatedRecord.technicianId._id || updatedRecord.technicianId,
             updatedRecord.appointmentId._id || updatedRecord.appointmentId
           );
-        } catch (_) {}
+        } catch (_) { }
       }
 
       return updatedRecord;
@@ -1287,6 +1287,159 @@ const workProgressTrackingService = {
       return updatedRecord;
     } catch (error) {
       throw new Error(`Error processing cash payment: ${error.message}`);
+    }
+  },
+
+  // Process online payment by staff (create PayOS payment link)
+  processOnlinePayment: async (id, paymentData) => {
+    try {
+      if (!mongoose.Types.ObjectId.isValid(id)) {
+        throw new Error("Invalid progress record ID");
+      }
+
+      const progressRecord = await WorkProgressTracking.findById(id).populate(
+        "appointmentId"
+      );
+      if (!progressRecord) {
+        throw new Error("Progress record not found");
+      }
+
+      // Validate that maintenance is completed
+      if (progressRecord.currentStatus !== "completed") {
+        throw new Error(
+          "Cannot process payment: maintenance is not completed"
+        );
+      }
+
+      // Validate payment data
+      if (!paymentData.staffId) {
+        throw new Error("Staff ID is required");
+      }
+
+      if (!mongoose.Types.ObjectId.isValid(paymentData.staffId)) {
+        throw new Error("Invalid staff ID");
+      }
+
+      if (!paymentData.amount || paymentData.amount <= 0) {
+        throw new Error("Valid payment amount is required");
+      }
+
+      const appointment = await Appointment.findById(
+        progressRecord.appointmentId
+      )
+        .populate("customer", "username fullName email")
+        .populate("vehicle", "vehicleInfo")
+        .populate("serviceCenter", "name")
+        .populate("serviceType", "name pricing");
+
+      if (!appointment) {
+        throw new Error("Appointment not found");
+      }
+
+      // Check if payment already exists for this appointment
+      const Payment = (await import("../models/payment.js")).default;
+      const existingPayment = await Payment.findOne({
+        appointment: appointment._id,
+        status: { $in: ["pending", "paid"] },
+      });
+
+      if (existingPayment && existingPayment.status === "paid") {
+        throw new Error("This appointment has already been paid");
+      }
+
+      // If pending payment exists, cancel it first
+      if (existingPayment && existingPayment.status === "pending") {
+        existingPayment.status = "cancelled";
+        await existingPayment.save();
+      }
+
+      // Create payment link via PayOS service
+      const payosService = (await import("./payosService.js")).default;
+      const payosUtils = (await import("../utils/payosUtils.js")).default;
+
+      // Create short description (max 25 chars for PayOS)
+      const shortDescription = payosUtils.generatePayOSDescription('service', appointment._id);
+
+      // Create full description for internal tracking
+      const fullDescription = payosUtils.generateFullDescription('service', appointment);
+
+      const paymentLinkResult = await payosService.createPaymentLink({
+        amount: paymentData.amount,
+        description: shortDescription,
+        items: [
+          {
+            name: appointment.serviceType?.name || "Bảo dưỡng xe điện",
+            quantity: 1,
+            price: paymentData.amount,
+          },
+        ],
+      });
+
+      if (!paymentLinkResult.success) {
+        throw new Error(
+          paymentLinkResult.message || "Failed to create payment link"
+        );
+      }
+
+      // Create payment record
+      const payment = new Payment({
+        appointment: appointment._id,
+        customer: appointment.customer._id,
+        paymentInfo: {
+          amount: paymentData.amount,
+          currency: "VND",
+          description: fullDescription, // Full description for internal tracking
+          orderCode: paymentLinkResult.data.orderCode,
+        },
+        payosInfo: paymentLinkResult.data,
+        paymentMethod: "payos",
+        status: "pending",
+        expiresAt: new Date(Date.now() + 15 * 60 * 1000), // 15 minutes
+        metadata: {
+          createdByStaff: paymentData.staffId,
+          progressRecordId: id,
+          shortDescription: shortDescription, // Store short description for reference
+        },
+      });
+
+      await payment.save();
+
+      // Update appointment with payment info
+      appointment.payment = {
+        method: "payos",
+        status: "pending",
+        amount: paymentData.amount,
+        paymentId: payment._id,
+        notes: paymentData.notes || "",
+      };
+      appointment.status = "payment_pending";
+      await appointment.save();
+
+      // Update progress record payment details
+      const updateData = {
+        "paymentDetails.paymentMethod": "payos",
+        "paymentDetails.paymentStatus": "pending",
+        "paymentDetails.paidAmount": paymentData.amount,
+        "paymentDetails.processedBy": paymentData.staffId,
+      };
+
+      await WorkProgressTracking.findByIdAndUpdate(id, { $set: updateData });
+
+      return {
+        payment: payment,
+        paymentLink: {
+          paymentId: payment._id,
+          orderCode: payment.payosInfo.orderCode,
+          paymentLink: payment.payosInfo.paymentLink,
+          qrCode: payment.payosInfo.qrCode,
+          checkoutUrl: payment.payosInfo.checkoutUrl,
+          deepLink: payment.payosInfo.deepLink,
+          amount: payment.paymentInfo.amount,
+          expiresAt: payment.expiresAt,
+        },
+      };
+    } catch (error) {
+      throw new Error(`Error processing online payment: ${error.message}`);
     }
   },
 
@@ -1785,7 +1938,7 @@ const workProgressTrackingService = {
             technicianData.technicianId.toString()
         ) ||
         progressRecord.technicianId.toString() ===
-          technicianData.technicianId.toString();
+        technicianData.technicianId.toString();
 
       if (isAlreadyAssigned) {
         throw new Error("Technician is already assigned to this work progress");
