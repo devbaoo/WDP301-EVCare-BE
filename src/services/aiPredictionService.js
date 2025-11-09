@@ -84,14 +84,24 @@ const aiPredictionService = {
   generateDemandForecast: async (centerId, predictionPeriod = "1_month") => {
     try {
       // Get all inventory items for the center
-      const inventoryItems = await CenterInventory.find({ centerId }).populate(
-        "partId"
-      );
+      const inventoryItems = await CenterInventory.find({
+        serviceCenter: centerId,
+      }).populate("part");
+
+      if (!inventoryItems || inventoryItems.length === 0) {
+        return {
+          success: false,
+          statusCode: 404,
+          message: "No inventory items found for this service center",
+        };
+      }
 
       const predictions = [];
 
       // For each inventory item, generate a prediction
       for (const item of inventoryItems) {
+        if (!item.part) continue;
+
         // Get historical transactions for this part
         const transactions = await InventoryTransaction.find({
           inventoryId: item._id,
@@ -102,27 +112,54 @@ const aiPredictionService = {
         });
 
         // Calculate average monthly usage
-        const monthlyUsage = calculateMonthlyUsage(
+        let monthlyUsage = calculateMonthlyUsage(
           transactions,
           predictionPeriod
         );
 
         // Calculate confidence score based on data quality
-        const confidenceScore = calculateConfidenceScore(transactions);
+        let confidenceScore = calculateConfidenceScore(transactions);
+
+        // FALLBACK: If no historical data, use intelligent defaults
+        if (monthlyUsage === 0 || transactions.length === 0) {
+          // Use current stock levels as reference
+          const currentStock = item.quantity || item.currentStock || 0;
+          const minStock = item.minStockLevel || 5;
+          const reorderPoint = item.reorderPoint || 10;
+
+          // Estimate monthly usage based on inventory settings
+          // Assumption: reorder point represents ~1-2 weeks of usage
+          if (reorderPoint > minStock) {
+            monthlyUsage = Math.ceil((reorderPoint - minStock) * 2); // 2x buffer
+          } else if (currentStock > 0) {
+            // Use current stock as baseline (assume it's optimized)
+            monthlyUsage = Math.ceil(currentStock * 0.3); // 30% of current stock
+          } else {
+            // Last resort: use industry standard based on part category
+            monthlyUsage = estimateUsageByCategory(item.part);
+          }
+
+          // Lower confidence for estimates
+          confidenceScore = 0.35;
+        }
 
         // Create prediction
         const prediction = new AiPrediction({
           centerId,
-          partId: item.partId._id,
+          partId: item.part._id,
           predictionType: "demand_forecast",
           predictedValue: monthlyUsage,
           confidenceScore,
           predictionPeriod,
-          modelVersion: "1.0",
+          modelVersion: "1.1", // Updated version with fallback logic
           inputData: {
             transactionCount: transactions.length,
             historicalPeriod: predictionPeriod,
-            currentStock: item.currentStock,
+            currentStock: item.quantity || item.currentStock || 0,
+            minStockLevel: item.minStockLevel,
+            reorderPoint: item.reorderPoint,
+            usedFallback: transactions.length === 0,
+            partCategory: item.part.category,
           },
         });
 
@@ -174,33 +211,49 @@ const aiPredictionService = {
       for (const partId in partForecasts) {
         const forecast = partForecasts[partId];
 
+        // Skip if forecast has very low predicted value and low confidence
+        // (likely due to lack of data)
+        if (forecast.predictedValue < 1 && forecast.confidenceScore < 0.4) {
+          console.log(
+            `Skipping stock optimization for part ${partId} due to insufficient forecast data`
+          );
+          continue;
+        }
+
         // Get current inventory data
         const inventory = await CenterInventory.findOne({
-          centerId,
-          partId,
-        }).populate("partId");
+          serviceCenter: centerId,
+          part: partId,
+        }).populate("part");
 
         if (!inventory) continue;
 
         // Get part details
-        const part = inventory.partId;
+        const part = inventory.part;
+
+        // Use predicted value or fallback to minimum sensible value
+        const monthlyForecast = Math.max(forecast.predictedValue, 2); // At least 2 units/month
 
         // Calculate optimal min stock level based on forecast and lead time
         const leadTimeDays = part.supplierInfo?.leadTimeDays || 14; // Default to 14 days if not specified
-        const dailyUsage = forecast.predictedValue / 30; // Assuming monthly forecast
+        const dailyUsage = monthlyForecast / 30; // Assuming monthly forecast
 
         // Min stock = usage during lead time + safety stock
         const safetyFactor = part.isCritical ? 2.0 : 1.5; // Higher safety factor for critical parts
-        const minStockLevel = Math.ceil(
-          dailyUsage * leadTimeDays * safetyFactor
-        );
+        let minStockLevel = Math.ceil(dailyUsage * leadTimeDays * safetyFactor);
+
+        // Ensure minimum stock levels make sense
+        minStockLevel = Math.max(minStockLevel, part.isCritical ? 5 : 3);
 
         // Reorder point = min stock + buffer
         const reorderPoint = Math.ceil(minStockLevel * 1.2);
 
         // Max stock = enough for 2 months for critical parts, 1.5 months for others
         const maxMonths = part.isCritical ? 2 : 1.5;
-        const maxStockLevel = Math.ceil(forecast.predictedValue * maxMonths);
+        let maxStockLevel = Math.ceil(monthlyForecast * maxMonths);
+
+        // Ensure max is always greater than min
+        maxStockLevel = Math.max(maxStockLevel, minStockLevel * 2);
 
         // Create prediction
         const prediction = new AiPrediction({
@@ -210,7 +263,7 @@ const aiPredictionService = {
           predictedValue: minStockLevel, // Store recommended min stock as predicted value
           confidenceScore: forecast.confidenceScore * 0.9, // Slightly lower confidence than demand forecast
           predictionPeriod: forecast.predictionPeriod,
-          modelVersion: "1.0",
+          modelVersion: "1.1", // Updated version
           inputData: {
             forecastId: forecast._id,
             leadTimeDays,
@@ -424,6 +477,48 @@ function calculateConfidenceScore(transactions) {
     Math.max(transactionFactor + recencyFactor + consistencyFactor, 0),
     1
   );
+}
+
+// Estimate usage by part category when no historical data exists
+function estimateUsageByCategory(part) {
+  const category = part.category?.toLowerCase() || "other";
+
+  // Industry-standard estimates based on part category (monthly usage)
+  const categoryEstimates = {
+    battery: 8, // Batteries replaced ~8 times/month
+    tire: 12, // Tires are common replacements
+    brake_pad: 10, // Brake pads
+    filter: 15, // Filters (oil, air, cabin)
+    wiper: 8, // Wiper blades
+    light_bulb: 6, // Light bulbs
+    oil: 20, // Engine oil
+    coolant: 10, // Coolant
+    fluid: 12, // Various fluids
+    belt: 5, // Belts (timing, serpentine)
+    spark_plug: 6, // Spark plugs
+    sensor: 4, // Sensors
+    fuse: 8, // Fuses
+    electrical: 5, // Electrical components
+    suspension: 3, // Suspension parts
+    engine: 2, // Engine components
+    transmission: 2, // Transmission parts
+    other: 5, // Default estimate
+  };
+
+  // Try to match category
+  for (const [key, estimate] of Object.entries(categoryEstimates)) {
+    if (category.includes(key)) {
+      return estimate;
+    }
+  }
+
+  // Check if it's a critical part (likely lower usage)
+  if (part.isCritical) {
+    return 3;
+  }
+
+  // Default
+  return categoryEstimates.other;
 }
 
 export default aiPredictionService;

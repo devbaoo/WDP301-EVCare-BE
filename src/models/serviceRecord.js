@@ -1,4 +1,4 @@
-const mongoose = require('mongoose');
+import mongoose from 'mongoose';
 
 const ServiceRecordSchema = new mongoose.Schema({
     appointmentId: {
@@ -85,7 +85,7 @@ const ServiceRecordSchema = new mongoose.Schema({
         default: Date.now
     }
 }, {
-    timestamps: { createdAt: 'createdAt', updatedAt: 'updatedAt' }
+    timestamps: { createdAt: 'createdAt', updatedAt: false }
 });
 
-module.exports = mongoose.model('ServiceRecord', ServiceRecordSchema);
+export default mongoose.model('ServiceRecord', ServiceRecordSchema);

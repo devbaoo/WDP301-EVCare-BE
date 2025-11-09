@@ -24,6 +24,7 @@ import partController from "../controllers/partController.js";
 import inventoryController from "../controllers/inventoryController.js";
 import aiPredictionController from "../controllers/aiPredictionController.js";
 import chatController from "../controllers/chatController.js";
+import dashboardController from "../controllers/dashboardController.js";
 import { protect, authorize } from "../middleware/authMiddleware.js";
 
 // Configure multer for file uploads
@@ -1338,6 +1339,71 @@ let initWebRoutes = (app) => {
     chatController.sendMessage
   );
   router.get("/api/chat/unread-count", protect, chatController.getUnreadCount);
+
+  // ===== DASHBOARD ROUTES =====
+  // Thống kê tổng quan
+  router.get(
+    "/api/dashboard/overview",
+    protect,
+    authorize("admin", "staff"),
+    dashboardController.getOverviewStats
+  );
+
+  // Thống kê doanh thu theo thời gian
+  router.get(
+    "/api/dashboard/revenue-analytics",
+    protect,
+    authorize("admin", "staff"),
+    dashboardController.getRevenueAnalytics
+  );
+
+  // Thống kê booking theo thời gian
+  router.get(
+    "/api/dashboard/booking-analytics",
+    protect,
+    authorize("admin", "staff"),
+    dashboardController.getBookingAnalytics
+  );
+
+  // Thống kê tăng trưởng khách hàng
+  router.get(
+    "/api/dashboard/customer-growth",
+    protect,
+    authorize("admin", "staff"),
+    dashboardController.getCustomerGrowth
+  );
+
+  // Thống kê hiệu suất service center
+  router.get(
+    "/api/dashboard/service-center-performance",
+    protect,
+    authorize("admin"),
+    dashboardController.getServiceCenterPerformance
+  );
+
+  // Thống kê inventory
+  router.get(
+    "/api/dashboard/inventory-stats",
+    protect,
+    authorize("admin", "staff"),
+    dashboardController.getInventoryStats
+  );
+
+  // Hoạt động gần đây
+  router.get(
+    "/api/dashboard/recent-activities",
+    protect,
+    authorize("admin", "staff"),
+    dashboardController.getRecentActivities
+  );
+
+  // Top khách hàng
+  router.get(
+    "/api/dashboard/top-customers",
+    protect,
+    authorize("admin", "staff"),
+    dashboardController.getTopCustomers
+  );
 
   // ===== HEALTH CHECK =====
   router.get("/api/health", (req, res) => {
