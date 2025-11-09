@@ -106,7 +106,7 @@ const AppointmentSchema = new mongoose.Schema(
     payment: {
       method: {
         type: String,
-        enum: ["cash", "card", "banking", "ewallet", "not_required"],
+        enum: ["cash", "card", "banking", "ewallet", "payos", "not_required"],
         default: "not_required",
       },
       status: {
@@ -117,6 +117,7 @@ const AppointmentSchema = new mongoose.Schema(
       amount: { type: Number, default: 0 },
       paidAt: { type: Date },
       transactionId: { type: String },
+      paymentId: { type: mongoose.Schema.Types.ObjectId, ref: "Payment" }, // Reference to Payment record
       notes: { type: String },
     },
 

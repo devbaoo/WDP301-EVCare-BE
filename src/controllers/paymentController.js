@@ -24,13 +24,13 @@ const createBookingPayment = async (req, res) => {
     }
 };
 
-// Lấy trạng thái thanh toán
+// Lấy trạng thái thanh toán (supports customer & staff/admin)
 const getPaymentStatus = async (req, res) => {
     try {
         const { paymentId } = req.params;
-        const customerId = req.user.id;
+        const user = req.user; // full user context (id, role, etc.)
 
-        const result = await payosService.getPaymentStatus(paymentId, customerId);
+        const result = await payosService.getPaymentStatus(paymentId, user);
 
         return res.status(result.statusCode).json({
             success: result.success,
