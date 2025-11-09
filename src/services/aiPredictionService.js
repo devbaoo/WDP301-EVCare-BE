@@ -85,8 +85,8 @@ const aiPredictionService = {
     try {
       // Get all inventory items for the center
       const inventoryItems = await CenterInventory.find({
-        serviceCenter: centerId,
-      }).populate("part");
+        centerId: centerId,
+      }).populate("partId");
 
       if (!inventoryItems || inventoryItems.length === 0) {
         return {
@@ -100,7 +100,7 @@ const aiPredictionService = {
 
       // For each inventory item, generate a prediction
       for (const item of inventoryItems) {
-        if (!item.part) continue;
+        if (!item.partId) continue;
 
         // Get historical transactions for this part
         const transactions = await InventoryTransaction.find({
@@ -136,7 +136,7 @@ const aiPredictionService = {
             monthlyUsage = Math.ceil(currentStock * 0.3); // 30% of current stock
           } else {
             // Last resort: use industry standard based on part category
-            monthlyUsage = estimateUsageByCategory(item.part);
+            monthlyUsage = estimateUsageByCategory(item.partId);
           }
 
           // Lower confidence for estimates
@@ -146,7 +146,7 @@ const aiPredictionService = {
         // Create prediction
         const prediction = new AiPrediction({
           centerId,
-          partId: item.part._id,
+          partId: item.partId._id,
           predictionType: "demand_forecast",
           predictedValue: monthlyUsage,
           confidenceScore,
@@ -159,7 +159,7 @@ const aiPredictionService = {
             minStockLevel: item.minStockLevel,
             reorderPoint: item.reorderPoint,
             usedFallback: transactions.length === 0,
-            partCategory: item.part.category,
+            partCategory: item.partId.category,
           },
         });
 
@@ -222,14 +222,14 @@ const aiPredictionService = {
 
         // Get current inventory data
         const inventory = await CenterInventory.findOne({
-          serviceCenter: centerId,
-          part: partId,
-        }).populate("part");
+          centerId: centerId,
+          partId: partId,
+        }).populate("partId");
 
         if (!inventory) continue;
 
         // Get part details
-        const part = inventory.part;
+        const part = inventory.partId;
 
         // Use predicted value or fallback to minimum sensible value
         const monthlyForecast = Math.max(forecast.predictedValue, 2); // At least 2 units/month
