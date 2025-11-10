@@ -559,8 +559,15 @@ const handleWebhook = async (webhookData, webhookId = null) => {
           netAmount: numericNet,
         });
 
-        // Update appointment status
+        // Determine payment flow: customer booking vs staff completion payment
+        const isStaffCompletionPayment = payment.metadata?.createdByStaff ||
+          payment.appointment?.status === "maintenance_completed" ||
+          payment.appointment?.status === "payment_pending";
+
         if (payment.appointment) {
+          // Different status based on payment flow
+          const newAppointmentStatus = isStaffCompletionPayment ? "completed" : "confirmed";
+
           await Appointment.findByIdAndUpdate(payment.appointment._id, {
             "payment.status": "paid",
             "payment.paidAt": new Date(),
@@ -569,12 +576,74 @@ const handleWebhook = async (webhookData, webhookId = null) => {
               reference ||
               payload?.data?.reference ||
               payload.transactionId,
-            status: "confirmed",
+            status: newAppointmentStatus,
           });
           console.log(
-            `[${webhookId || "webhook"
-            }] Updated appointment status to confirmed`
+            `[${webhookId || "webhook"}] Updated appointment status to ${newAppointmentStatus} (isStaffPayment: ${isStaffCompletionPayment})`
           );
+
+          // Only update WorkProgressTracking and free technicians for STAFF completion payments
+          if (isStaffCompletionPayment) {
+            // Update WorkProgressTracking if exists (match offline payment flow)
+            try {
+              const WorkProgressTracking = (await import("../models/workProgressTracking.js")).default;
+              const progressRecord = await WorkProgressTracking.findOne({
+                appointmentId: payment.appointment._id,
+              });
+
+              if (progressRecord) {
+                progressRecord.paymentDetails = progressRecord.paymentDetails || {};
+                progressRecord.paymentDetails.paymentMethod = "payos";
+                progressRecord.paymentDetails.paymentStatus = "paid";
+                progressRecord.paymentDetails.paidAmount = numericAmount || payment.paymentInfo?.amount;
+                progressRecord.paymentDetails.paidAt = new Date();
+                await progressRecord.save();
+                console.log(
+                  `[${webhookId || "webhook"}] Updated WorkProgressTracking payment details`
+                );
+              }
+            } catch (wpErr) {
+              console.error(`[${webhookId || "webhook"}] Failed to update WorkProgressTracking:`, wpErr);
+            }
+
+            // Free technician schedules (match offline payment flow)
+            try {
+              const TechnicianSchedule = (await import("../models/technicianSchedule.js")).default;
+              const schedules = await TechnicianSchedule.find({
+                assignedAppointments: payment.appointment._id,
+              });
+
+              for (const sched of schedules) {
+                const updatedSched = await TechnicianSchedule.findByIdAndUpdate(
+                  sched._id,
+                  { $pull: { assignedAppointments: payment.appointment._id } },
+                  { new: true }
+                );
+
+                if (updatedSched) {
+                  updatedSched.availability = "available";
+                  await updatedSched.save();
+                  console.log(
+                    `[${webhookId || "webhook"}] Freed technician schedule for ${sched.technicianId}`
+                  );
+                }
+              }
+            } catch (schedErr) {
+              console.error(`[${webhookId || "webhook"}] Failed to free technician schedules:`, schedErr);
+            }
+
+            // Send payment receipt email (match offline payment flow)
+            try {
+              const emailService = await import("./emailService.js");
+              const fullAppointment = await Appointment.findById(payment.appointment._id);
+              if (fullAppointment && emailService.sendPaymentReceipt) {
+                await emailService.sendPaymentReceipt(fullAppointment);
+                console.log(`[${webhookId || "webhook"}] Sent payment receipt email`);
+              }
+            } catch (emailErr) {
+              console.error(`[${webhookId || "webhook"}] Failed to send payment receipt:`, emailErr);
+            }
+          }
         }
         break;
 
