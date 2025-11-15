@@ -71,9 +71,13 @@ const register = async (userData, baseUrl) => {
 };
 
 let login = async (email, password) => {
+  console.log("🔐 Login attempt:", { email, passwordLength: password?.length });
+
   let user = await User.findOne({ email });
+  console.log("👤 User found:", user ? "YES" : "NO");
 
   if (!user) {
+    console.log("❌ User not found for email:", email);
     return {
       success: false,
       statusCode: 400,
@@ -81,8 +85,12 @@ let login = async (email, password) => {
     };
   }
 
+  console.log("🔑 Comparing password...");
   let isMatch = await bcrypt.compare(password, user.password);
+  console.log("🔐 Password match:", isMatch);
+
   if (!isMatch) {
+    console.log("❌ Password mismatch for user:", email);
     return {
       success: false,
       statusCode: 400,

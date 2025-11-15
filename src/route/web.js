@@ -22,9 +22,9 @@ import invoiceController from "../controllers/invoiceController.js";
 import vehicleController from "../controllers/vehicleController.js";
 import partController from "../controllers/partController.js";
 import inventoryController from "../controllers/inventoryController.js";
-import aiPredictionController from "../controllers/aiPredictionController.js";
 import chatController from "../controllers/chatController.js";
 import dashboardController from "../controllers/dashboardController.js";
+import aiPredictionController from "../controllers/aiPredictionController.js";
 import { protect, authorize } from "../middleware/authMiddleware.js";
 
 // Configure multer for file uploads
@@ -1111,38 +1111,6 @@ let initWebRoutes = (app) => {
     inventoryController.getInventoryById
   );
 
-  // ===== AI PREDICTION =====
-  router.get(
-    "/api/ai/predictions",
-    protect,
-    authorize("admin", "staff"),
-    aiPredictionController.getAllPredictions
-  );
-  router.get(
-    "/api/ai/predictions/:id",
-    protect,
-    authorize("admin", "staff"),
-    aiPredictionController.getPredictionById
-  );
-  router.post(
-    "/api/ai/demand-forecast",
-    protect,
-    authorize("admin", "staff"),
-    aiPredictionController.generateDemandForecast
-  );
-  router.post(
-    "/api/ai/stock-optimization",
-    protect,
-    authorize("admin", "staff"),
-    aiPredictionController.generateStockOptimization
-  );
-  router.post(
-    "/api/ai/apply-recommendations",
-    protect,
-    authorize("admin", "staff"),
-    aiPredictionController.applyRecommendations
-  );
-
   // ===== SYSTEM SETTINGS =====
   router.get(
     "/api/settings/policies",
@@ -1285,38 +1253,6 @@ let initWebRoutes = (app) => {
     inventoryController.getInventoryById
   );
 
-  // ===== AI PREDICTION =====
-  router.get(
-    "/api/ai/predictions",
-    protect,
-    authorize("admin", "manager", "staff"),
-    aiPredictionController.getAllPredictions
-  );
-  router.get(
-    "/api/ai/predictions/:id",
-    protect,
-    authorize("admin", "manager", "staff"),
-    aiPredictionController.getPredictionById
-  );
-  router.post(
-    "/api/ai/demand-forecast",
-    protect,
-    authorize("admin", "manager"),
-    aiPredictionController.generateDemandForecast
-  );
-  router.post(
-    "/api/ai/stock-optimization",
-    protect,
-    authorize("admin", "manager"),
-    aiPredictionController.generateStockOptimization
-  );
-  router.post(
-    "/api/ai/apply-recommendations",
-    protect,
-    authorize("admin", "manager"),
-    aiPredictionController.applyRecommendations
-  );
-
   // ===== CHAT =====
   router.get("/api/chat/bookings", protect, chatController.getBookingsForChat);
   router.get(
@@ -1409,6 +1345,63 @@ let initWebRoutes = (app) => {
     protect,
     authorize("admin", "staff"),
     dashboardController.getTopCustomers
+  );
+
+  // ===== AI PREDICTION ROUTES =====
+  // Tạo dự đoán AI mới cho inventory optimization
+  router.post(
+    "/api/ai-prediction/generate/:centerId",
+    protect,
+    authorize("admin", "staff"),
+    aiPredictionController.generateInventoryPrediction
+  );
+
+  // Force regenerate prediction (bỏ qua prediction hiện tại)
+  router.post(
+    "/api/ai-prediction/regenerate/:centerId",
+    protect,
+    authorize("admin", "staff"),
+    aiPredictionController.forceRegeneratePrediction
+  );
+
+  // Lấy prediction mới nhất cho center
+  router.get(
+    "/api/ai-prediction/latest/:centerId",
+    protect,
+    authorize("admin", "staff"),
+    aiPredictionController.getLatestPrediction
+  );
+
+  // Lấy lịch sử predictions
+  router.get(
+    "/api/ai-prediction/history/:centerId",
+    protect,
+    authorize("admin", "staff"),
+    aiPredictionController.getPredictionHistory
+  );
+
+  // Lấy thống kê tổng quan về predictions
+  router.get(
+    "/api/ai-prediction/stats/:centerId",
+    protect,
+    authorize("admin", "staff"),
+    aiPredictionController.getPredictionStats
+  );
+
+  // Lấy khuyến nghị cho phụ tùng cụ thể
+  router.get(
+    "/api/ai-prediction/part-recommendation/:centerId/:partId",
+    protect,
+    authorize("admin", "staff"),
+    aiPredictionController.getPartRecommendation
+  );
+
+  // Cập nhật feedback cho prediction
+  router.put(
+    "/api/ai-prediction/feedback/:predictionId",
+    protect,
+    authorize("admin", "staff"),
+    aiPredictionController.updatePredictionFeedback
   );
 
   // ===== HEALTH CHECK =====

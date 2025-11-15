@@ -25,8 +25,15 @@ const register = async (req, res) => {
 // Đăng nhập
 const login = async (req, res) => {
   try {
+    console.log("🚀 Login controller called");
+    console.log("📝 Request body:", req.body);
+
     const { email, password } = req.body;
+    console.log("📧 Email:", email);
+    console.log("🔑 Password length:", password?.length);
+
     const result = await authService.login(email, password);
+    console.log("📊 Auth service result:", result);
 
     return res.status(result.statusCode).json({
       success: result.success,
@@ -37,7 +44,7 @@ const login = async (req, res) => {
       needVerification: result.needVerification || false,
     });
   } catch (error) {
-    console.error("Login error:", error);
+    console.error("❌ Login error:", error);
     res.status(500).json({
       success: false,
       message: "Server error",
